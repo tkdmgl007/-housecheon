@@ -153,6 +153,7 @@ label input,label select{display:block;width:100%;margin-top:4px;padding:10px;bo
 <datalist id="villaList"></datalist>
 <div id="toast"></div>
 
+<script src="/villas.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
@@ -172,7 +173,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(e=>console.warn('persistence'
 const LEDGER = 'ledger';           // 장부가 저장되는 컬렉션
 const BIZ = 'B.D씽크';             // 청구문자에 들어가는 상호
 
-let villas = JSON.parse(localStorage.getItem('villas-cache')||'[]');
+let villas = VILLA_LIST.map(v=>v.name);
 let entries = [];
 let filter = 'all';
 let editing = null;
@@ -199,6 +200,9 @@ function parseLine(line){
   let villa='';
   for(const v of [...villas].sort((a,b)=>b.length-a.length)){
     if(v && t.includes(v)){ villa=v; t=t.replace(v,' '); break; }
+  }
+  if(!villa){
+    for(const [al,nm] of VILLA_ALIASES){ if(t.includes(al)){ villa=nm; t=t.replace(al,' '); break; } }
   }
   if(!villa){
     const m = t.match(/[^\s\d]+(하우스|빌라|빌|맨션|타운|팰리스|힐스|힐|캐슬|파크|하임|빌리지)/);
@@ -258,7 +262,7 @@ function parseLine(line){
   const target = /세입자|임차인|세입/.test(src) ? '세입자' : '건물주';
   const paid = /입금완료|입금됨|받음|받았|완납|결제완료/.test(src);
   const margin = (charge??0)-(cost??0);
-  const needsCheck = kind==='구매' ? cost===null : (!villa || !unit || charge===null);
+  const needsCheck = kind==='구매' ? cost===null : (!villas.includes(villa) || !unit || charge===null);
   return {date:ymd(d), villa, unit, item, kind, cost, charge, margin, target, paid, needsCheck};
 }
 
@@ -276,11 +280,7 @@ function saveMemo(){
 }
 
 /* ===== 실시간 동기화 ===== */
-db.collection('villas').onSnapshot(s=>{
-  const names = s.docs.map(d=>d.data().name).filter(Boolean);
-  if(names.length){ villas=[...new Set(names)]; localStorage.setItem('villas-cache',JSON.stringify(villas)); }
-  renderChips();
-},()=>renderChips());
+
 
 db.collection(LEDGER).orderBy('createdAt','desc').limit(500)
   .onSnapshot({includeMetadataChanges:true}, s=>{
@@ -292,7 +292,7 @@ db.collection(LEDGER).orderBy('createdAt','desc').limit(500)
 function renderChips(){
   $('chips').innerHTML = villas.length
     ? villas.map(v=>`<button class="chip" data-v="${esc(v)}">${esc(v)}</button>`).join('')
-    : '<span style="font-size:12px;color:var(--soft);padding:4px">빌라관리 앱에 등록한 빌라가 여기 나와요</span>';
+    : '';
   $('villaList').innerHTML = villas.map(v=>`<option value="${esc(v)}">`).join('');
 }
 function renderPreview(){
