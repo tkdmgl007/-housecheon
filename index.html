@@ -134,11 +134,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
     <datalist id="itemList"></datalist>
     <div class="g2">
       <label>구분<select id="fKind"><option>수리</option><option>교체</option><option>설치</option><option>이사정산</option><option>기타</option></select></label>
-      <label>구입처<select id="fVendor"></select></label>
-      <label>매입가(원)<input id="fCost" inputmode="numeric" placeholder="0"></label>
       <label>청구가(원)<input id="fCharge" inputmode="numeric" placeholder="0"></label>
+      <label id="qtyBox">재고에서 쓴 개수<input id="fQty" inputmode="numeric" value="1"></label>
       <label>청구대상<select id="fTarget"><option>건물주</option><option>세입자</option></select></label>
-      <label>마진<input id="fMargin" disabled></label>
+      <label>마진 (자동)<input id="fMargin" disabled></label>
     </div>
     <label>메모<input id="fMemo" placeholder="특이사항"></label>
     <div class="chk"><input type="checkbox" id="fPaid"><label for="fPaid" style="margin:0;color:var(--ink);font-size:15px">입금 받음</label></div>
@@ -255,7 +254,7 @@ function renderPart(vendor, partName){
     <div class="stat num"><div><small>산 개수</small><strong>${e.bought}</strong></div>
       <div><small>쓴 개수</small><strong>${e.used}</strong></div>
       <div><small>남은 개수</small><strong style="color:var(--teal)">${e.left}</strong></div></div>
-    ${e.short?`<div class="warn">산 기록보다 ${e.short}개 더 썼어요. 구매 기록이 빠졌는지 확인해 주세요.</div>`:''}
+    ${e.short?`<div class="warn">재고 없이 쓴 게 ${e.short}개 있어요 (얻었거나 구매 기록이 빠진 것, 원가 0원으로 계산)</div>`:''}
     <div class="sec"><h3>산 기록 <span>가게별 남은: ${Object.entries(e.byVendor).map(([k,b])=>`${esc(k)} ${b.left}개`).join(' · ')}</span></h3>
       <div class="list">${lots.map(l=>`<div class="rec" data-buy="${l.id}">
         <div><div class="t">${esc(l.vendor)}</div><div class="d">${esc(l.date||'')}${l.p.memo?' · '+esc(l.p.memo):''}</div></div>
@@ -362,7 +361,7 @@ function renderUnit(v,u){
     <div class="title"><h2>${esc(v.name)} ${esc(u)}호</h2><small>${esc(v.addr)}</small></div>
     ${warnBox()}
     <div class="sum num"><div><small>총 청구</small><strong>${won(sum('charge'))}</strong></div>
-      <div><small>마진</small><strong style="color:var(--teal)">${won(sum('charge')-sum('cost'))}</strong></div>
+      <div><small>마진</small><strong style="color:var(--teal)">${won(recs.reduce((a,r)=>a+effMargin(stock,r),0))}</strong></div>
       <div><small>미수</small><strong style="color:var(--amberink)">${won(unpaid)}</strong></div></div>
     <div class="sec"><h3>수리 기록 <span>${recs.length}건</span></h3>
       ${recs.length?`<div class="list">${recs.map(recRow).join('')}</div>`:'<div class="empty">아직 기록이 없어요. 아래 "+ 수리 기록"을 누르세요.</div>'}
@@ -372,13 +371,12 @@ function renderUnit(v,u){
 function recRow(r){
   return `<div class="rec" data-rec="${r.id}">
     <div><div class="t">${r.unit?`<span>${esc(unitKey(r.unit))}호</span>`:''}${esc(r.item||r.raw||'')}</div>
-      <div class="d">${esc(r.date||'')} · ${esc(r.kind||'')}${r.vendor?' · '+esc(r.vendor):''}${r.memo?' · '+esc(r.memo):''}</div></div>
-    <div class="m num">청구 ${won(r.charge)}<br><b>${won(r.margin)}</b>
+      <div class="d">${esc(r.date||'')} · ${esc(r.kind||'')}${r.part?` · 📦${esc(r.part)} ${r.partQty||1}개 (원가 ${won(effCost(stock,r))})`:''}${r.memo?' · '+esc(r.memo):''}</div></div>
+    <div class="m num">청구 ${won(r.charge)}<br><b>${won(effMargin(stock,r))}</b>
       ${r.charge?(r.paid?'<span class="tag paid">입금</span>':'<span class="tag unpaid">미수</span>'):''}</div></div>`;
 }
 
 /* ===== 수리 기록 입력 ===== */
-$('fVendor').innerHTML='<option value="">선택 안 함</option>'+VENDORS.map(v=>`<option>${esc(v.name.replace(/\s*\(.*\)/,''))}</option>`).join('');
 function curVilla(){ const p=decodeURIComponent(location.hash.replace(/^#\/?/,'')).split('/'); return {villa:p[1], unit:p[2]||''}; }
 function openSheet(rec){
   editing=rec||null; const c=curVilla();
@@ -387,41 +385,46 @@ function openSheet(rec){
   $('fUnit').value = rec ? unitKey(rec.unit) : c.unit;
   $('fItem').value = rec?.item || '';
   $('fKind').value = rec?.kind && [...$('fKind').options].some(o=>o.value===rec.kind) ? rec.kind : '수리';
-  $('fVendor').value = rec?.vendor || '';
-  $('fCost').value = rec?.cost ?? ''; $('fCharge').value = rec?.charge ?? '';
+  $('fCharge').value = rec?.charge ?? ''; $('fQty').value = rec?.partQty || 1;
   $('fTarget').value = rec?.target || '건물주'; $('fMemo').value = rec?.memo || '';
   $('fPaid').checked = !!rec?.paid; $('sDel').style.display = rec ? '' : 'none';
-  ['fCost','fCharge','fVendor'].forEach(id=>$(id).dataset.auto='');
   $('fItem').dataset.part = rec?.part || '';
   $('fHint').textContent='';
   $('itemList').innerHTML=[...new Set(ledger.map(r=>r.item).filter(Boolean))].slice(0,300).map(i=>`<option value="${esc(i)}">`).join('');
-  updMargin(); $('sheetWrap').classList.add('open');
+  fillPrice(); $('sheetWrap').classList.add('open');
   if(!rec) setTimeout(()=>($('fUnit').value?$('fItem'):$('fUnit')).focus(),250);
 }
 function fillPrice(){
-  const item=$('fItem').value.trim(), vendor=$('fVendor').value;
+  const item=$('fItem').value.trim();
   const part=findPart(item, Object.values(stock).map(e=>e.name));
   $('fItem').dataset.part=part;
-  if(!part){ $('fHint').textContent=''; return; }
-  const e=stock[ikey(part)], sg=suggest(stock, part, vendor);
-  if(sg){
-    if(!vendor && $('fVendor').dataset.auto!=='0') $('fVendor').value=sg.vendor;
-    if($('fCost').value==='' || $('fCost').dataset.auto==='1'){ $('fCost').value=sg.price??''; $('fCost').dataset.auto='1'; }
-    updMargin();
-  }
-  const vs=Object.entries(e.byVendor).map(([k,b])=>`${esc(k)} ${b.left}개(${won(b.lastPrice)})`).join(' · ');
-  $('fHint').innerHTML=`📦 <b>${esc(part)}</b> 재고 ${e.left}개 — ${vs}`+(sg&&!sg.inStock?'<br>재고가 없어서 마지막 산 가격으로 넣었어요':'')+'<br>저장하면 재고에서 1개 빠져요';
+  $('qtyBox').style.display = part ? '' : 'none';
+  if(!part){ $('fHint').textContent = item ? '재고에 없는 물건이라 원가 0원으로 계산돼요 (얻었거나 안 산 것)' : ''; updMargin(); return; }
+  const e=stock[ikey(part)];
+  const mine = editing && editing.part ? (editing.partQty||1) : 0;   // 수정 중이면 이 기록이 쓴 만큼은 재고로 돌려놓고 봄
+  const vs=Object.entries(e.byVendor).map(([k,b])=>`${esc(k)} ${b.left}개`).join(' · ');
+  $('fHint').innerHTML=`📦 <b>${esc(part)}</b> 재고 ${e.left+mine}개 (${vs})<br>저장하면 재고에서 빠지고 원가가 자동으로 잡혀요`;
+  updMargin();
 }
 function closeSheet(){ $('sheetWrap').classList.remove('open'); editing=null; }
-function updMargin(){ $('fMargin').value=won((toNum($('fCharge').value)??0)-(toNum($('fCost').value)??0)); }
+function estCost(){
+  const part=$('fItem').dataset.part; if(!part){ return editing&&!editing.part ? (Number(editing.cost)||0) : 0; }
+  const e=stock[ikey(part)]; let need=toNum($('fQty').value)||1, cost=0;
+  const lots=e.lots.map(l=>({price:l.price,left:l.left}));
+  if(editing && editing.part){ const u=e.uses.find(x=>x.r.id===editing.id); u&&u.from.forEach(f=>{ const l=lots[e.lots.indexOf(f.lot)]; l.left+=f.qty; }); }
+  for(const l of lots){ if(need<=0) break; const t=Math.min(l.left,need); cost+=t*l.price; need-=t; }
+  return cost;
+}
+function updMargin(){ const c=estCost(); $('fMargin').value=won((toNum($('fCharge').value)??0)-c)+(c?` (원가 ${won(c)})`:''); }
 function saveSheet(){
   const c=curVilla(), unit=unitKey($('fUnit').value), item=$('fItem').value.trim();
   if(!unit){ toast('호수를 적어주세요'); $('fUnit').focus(); return; }
   if(!item){ toast('내용을 적어주세요'); $('fItem').focus(); return; }
-  const cost=toNum($('fCost').value), charge=toNum($('fCharge').value);
-  const data={ villa: editing?.villa || c.villa, unit, item, date:$('fDate').value, kind:$('fKind').value, vendor:$('fVendor').value,
-    cost, charge, margin:(charge??0)-(cost??0), target:$('fTarget').value, memo:$('fMemo').value.trim(), paid:$('fPaid').checked, needsCheck:false,
-    part: findPart(item, Object.values(stock).map(e=>e.name)) || '', partQty:1 };
+  const charge=toNum($('fCharge').value), part=findPart(item, Object.values(stock).map(e=>e.name))||'', cost=estCost();
+  const data={ villa: editing?.villa || c.villa, unit, item, date:$('fDate').value, kind:$('fKind').value, 
+    charge, margin:(charge??0)-cost, target:$('fTarget').value, memo:$('fMemo').value.trim(), paid:$('fPaid').checked, needsCheck:false,
+    part, partQty: part ? (toNum($('fQty').value)||1) : 0 };
+  if(!editing || editing.part || part) data.cost = part ? null : (editing ? (editing.cost??null) : null);
   const p = editing ? db.collection(LEDGER).doc(editing.id).update(data)
                     : db.collection(LEDGER).add({...data, raw:'', createdAt:Date.now()});
   p.catch(e=>toast('저장 실패: '+e.code));
@@ -520,11 +523,10 @@ $('fab').onclick=()=>{
   if(p[0]==='vendor') openBuy(null,{vendor:p[1], item:p[2]?(stock[ikey(p[2])]?.name||p[2]):''}); else openSheet();
 };
 $('sheetBg').onclick=closeSheet; $('sCancel').onclick=closeSheet; $('sSave').onclick=saveSheet; $('sDel').onclick=delRecord;
-$('fCost').oninput=()=>{ $('fCost').dataset.auto='0'; updMargin(); };
-$('fCharge').oninput=()=>{ $('fCharge').dataset.auto='0'; updMargin(); };
+$('fCharge').oninput=updMargin; $('fQty').oninput=updMargin;
 $('fItem').addEventListener('change',fillPrice);
+$('fItem').addEventListener('input',fillPrice);
 $('fItem').addEventListener('blur',fillPrice);
-$('fVendor').addEventListener('change',()=>{ $('fVendor').dataset.auto='0'; fillPrice(); });
 const fixBar=()=>$('bar').style.top=document.querySelector('header').offsetHeight+'px';
 fixBar(); addEventListener('resize',fixBar);
 renderChips(); route();

@@ -281,7 +281,7 @@ function analyze(raw){
   if(part){
     p.part=part; p.partQty=1;
     const sg=suggest(stock, part, p.vendor);
-    if(sg){ if(!p.vendor) p.vendor=sg.vendor; if(p.cost==null){ p.cost=sg.price; p.margin=(p.charge??0)-(p.cost??0); } }
+    if(sg && p.cost==null){ p.margin=(p.charge??0)-sg.price; }   // 원가는 저장 안 하고 재고에서 계산
     info={part, left:stock[ikey(part)].left};
   }
   return {type:'fix', p, info};
@@ -303,7 +303,7 @@ function saveMemo(){
   toast(navigator.onLine ? `${msg} 적었어요` : `${msg} 폰에 저장, 연결되면 올라가요`);
 }
 let purchases=[];
-db.collection('purchases').onSnapshot(s=>{ purchases=s.docs.map(d=>({id:d.id,...d.data()})); renderPreview(); },()=>{});
+db.collection('purchases').onSnapshot(s=>{ purchases=s.docs.map(d=>({id:d.id,...d.data()})); renderPreview(); renderList(); },()=>{});
 
 /* ===== 실시간 동기화 ===== */
 
@@ -343,10 +343,11 @@ function renderNet(){
 function renderList(){
   const mon = ymd(new Date()).slice(0,7);
   const mEntries = entries.filter(e=>(e.date||'').startsWith(mon));
-  const sum = k => mEntries.reduce((a,e)=>a+(Number(e[k])||0),0);
+  const st = buildStock(purchases, entries);
+  const sum = k => mEntries.reduce((a,e)=>a+(k==='cost'?effCost(st,e):(Number(e[k])||0)),0);
   const unpaid = entries.filter(e=>!e.paid && e.charge).reduce((a,e)=>a+Number(e.charge),0);
   $('sum').innerHTML = `
-    <div><small>이번달 매입</small><strong class="num">${won(sum('cost'))}</strong></div>
+    <div><small>이번달 원가</small><strong class="num">${won(sum('cost'))}</strong></div>
     <div><small>이번달 청구</small><strong class="num">${won(sum('charge'))}</strong></div>
     <div class="m"><small>이번달 마진</small><strong class="num">${won(sum('charge')-sum('cost'))}</strong></div>
     <div class="u"><small>미수금 전체</small><strong class="num">${won(unpaid)}</strong></div>`;
@@ -365,7 +366,7 @@ function renderList(){
         <div class="t">${esc(e.villa)||'빌라?'} ${e.unit?esc(e.unit)+'호':''}<span>${esc(e.item)}</span></div>
         <div class="d">${esc(e.date)} · ${esc(e.kind)} · ${esc(e.target)}</div>
       </div>
-      <div class="money num">매입 ${won(e.cost)}<br>청구 ${won(e.charge)}<br><b>${won(e.margin)}</b></div>
+      <div class="money num">원가 ${won(effCost(st,e))}<br>청구 ${won(e.charge)}<br><b>${won(effMargin(st,e))}</b></div>
       <div class="tags">
         ${e.charge?(e.paid?'<span class="tag paid">입금완료</span>':'<span class="tag unpaid">미수</span>'):''}
         ${e.needsCheck?'<span class="tag warn">확인필요</span>':''}

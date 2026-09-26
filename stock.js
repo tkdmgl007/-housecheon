@@ -51,6 +51,15 @@ function buildStock(purchases, ledger){
   return parts;
 }
 
+/* 수리 기록 1건의 원가: 재고에서 꺼낸 물건 값 (재고 없이 쓴 건 0원), 재고 안 쓴 기록은 적어둔 매입가 */
+function effCost(stock, r){
+  if(!r.part) return Number(r.cost)||0;
+  const e=stock[ikey(r.part)]; if(!e) return 0;
+  const u=e.uses.find(x=>x.r===r || (r.id && x.r.id===r.id));
+  return u ? u.from.reduce((a,f)=>a+f.lot.price*f.qty,0) : 0;
+}
+const effMargin=(stock,r)=>(Number(r.charge)||0)-effCost(stock,r);
+
 /* 지금 쓰면 어느 가게 것, 얼마짜리가 나가는지 */
 function suggest(stock, part, vendor){
   const e=stock[ikey(part)]; if(!e) return null;
@@ -85,5 +94,5 @@ function parsePurchase(line, ymd){
 }
 const looksLikePurchase = line => !!findVendor(line) || /(샀|구입|구매|사옴)/.test(line);
 
-Object.assign(window,{VENDOR_ALIASES:VA, ikey, findVendor, findPart, buildStock, suggest, parsePurchase, looksLikePurchase});
+Object.assign(window,{effCost, effMargin, VENDOR_ALIASES:VA, ikey, findVendor, findPart, buildStock, suggest, parsePurchase, looksLikePurchase});
 })();
