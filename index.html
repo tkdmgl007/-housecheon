@@ -52,6 +52,9 @@ main{max-width:680px;margin:0 auto;padding:6px 12px 90px}
 .sec{margin-top:18px}
 .sec h3{font-size:15px;margin:0 4px 8px;display:flex;align-items:center;justify-content:space-between}
 .sec h3 span{font-size:12px;color:var(--soft);font-weight:500}
+.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:12px;overflow:hidden;margin-bottom:6px}
+.stat div{background:#fff;padding:10px 6px;text-align:center}.stat small{display:block;font-size:11px;color:var(--soft)}.stat strong{font-size:17px}
+.left0{color:var(--soft)!important}
 .units{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px}
 .unit{background:#fff;border:1px solid var(--rule);border-radius:10px;padding:12px 6px;text-align:center;cursor:pointer;font:inherit;color:var(--ink)}
 .unit b{display:block;font-size:17px}
@@ -75,13 +78,15 @@ main{max-width:680px;margin:0 auto;padding:6px 12px 90px}
 .fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 16px);z-index:15;
   width:min(640px,calc(100% - 24px));padding:15px;border:0;border-radius:12px;background:var(--teal);color:#fff;font:inherit;font-size:16px;font-weight:700;
   box-shadow:0 4px 14px rgba(15,107,94,.3)}
+.hint{font-size:12px;color:var(--teal);background:var(--paper);border-radius:8px;padding:8px 10px;margin:-4px 0 10px;line-height:1.6}
+.hint:empty{display:none}
 .warn{background:#fdecea;color:var(--red);border-radius:10px;padding:10px 12px;font-size:13px;margin-top:10px;line-height:1.5}
 
 /* 입력 시트 */
 .sheet-bg{position:fixed;inset:0;background:rgba(18,51,46,.45);display:none;z-index:30}
 .sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:#fff;border-radius:18px 18px 0 0;max-width:680px;margin:0 auto;
   padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 16px);max-height:90vh;overflow:auto;transform:translateY(100%);transition:transform .22s ease}
-.open .sheet-bg{display:block} .open .sheet{transform:none}
+#sheetWrap.open .sheet-bg,#buyWrap.open .sheet-bg{display:block} #sheetWrap.open .sheet,#buyWrap.open .sheet{transform:none}
 .sheet h2{font-size:17px;margin-bottom:12px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 label{display:block;font-size:12px;color:var(--soft);margin-bottom:10px}
@@ -124,7 +129,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
       <label>날짜<input type="date" id="fDate"></label>
       <label>호수<input id="fUnit" inputmode="numeric" placeholder="예: 302"></label>
     </div>
-    <label>내용<input id="fItem" placeholder="예: 폽업 교체, 보일러 수리"></label>
+    <label>내용<input id="fItem" list="itemList" placeholder="예: 수전, 폽업, 보일러" autocomplete="off"></label>
+    <div class="hint" id="fHint"></div>
+    <datalist id="itemList"></datalist>
     <div class="g2">
       <label>구분<select id="fKind"><option>수리</option><option>교체</option><option>설치</option><option>이사정산</option><option>기타</option></select></label>
       <label>구입처<select id="fVendor"></select></label>
@@ -142,9 +149,33 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
     </div>
   </div>
 </div>
+<div id="buyWrap">
+  <div class="sheet-bg" id="buyBg"></div>
+  <div class="sheet" role="dialog" aria-label="구매 기록">
+    <h2 id="bTitle">구매 기록</h2>
+    <div class="g2">
+      <label>날짜<input type="date" id="bDate"></label>
+      <label>구입처<select id="bVendor"></select></label>
+    </div>
+    <label>품목<input id="bItem" list="partList" placeholder="예: 수전, 폽업" autocomplete="off"></label>
+    <datalist id="partList"></datalist>
+    <div class="g2">
+      <label>수량<input id="bQty" inputmode="numeric" value="1"></label>
+      <label>개당 가격(원)<input id="bPrice" inputmode="numeric" placeholder="0"></label>
+    </div>
+    <div class="hint" id="bHint"></div>
+    <label>메모<input id="bMemo" placeholder="특이사항"></label>
+    <div class="btns">
+      <button class="pri" id="bSave">저장</button>
+      <button id="bCancel">닫기</button>
+      <button class="del" id="bDel">삭제</button>
+    </div>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script src="/villas.js"></script>
+<script src="/stock.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
@@ -176,6 +207,9 @@ const unitDocId=(v,u)=>(v+'__'+u).replace(/\//g,'-');
 /* ===== 데이터 ===== */
 db.collection(LEDGER).onSnapshot(s=>{ ledger=s.docs.map(d=>({id:d.id,...d.data()})); fbErr=null; route(); }, e=>{ fbErr=e.code; route(); });
 db.collection(UNITS).onSnapshot(s=>{ units=s.docs.map(d=>({id:d.id,...d.data()})); route(); }, e=>{ fbErr=e.code; route(); });
+let purchases=[], stock={};
+const PUR='purchases';
+db.collection(PUR).onSnapshot(s=>{ purchases=s.docs.map(d=>({id:d.id,...d.data()})); route(); }, e=>{ fbErr=e.code; route(); });
 
 function recordsOf(villa,unit){
   return ledger.filter(r=>r.villa===villa && (unit===undefined || unitKey(r.unit)===unit))
@@ -187,12 +221,67 @@ function unitsOf(villa){
   return [...set].filter(Boolean).sort(unitSort);
 }
 
+/* ===== 업체 · 재고 ===== */
+const vShort=n=>n.replace(/\s*\(.*\)/,'');
+const mmdd=d=>(d||'').slice(5).replace('-','/');
+function partsOfVendor(vendor){
+  return Object.values(stock).filter(e=>e.byVendor[vendor]).sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+}
+function renderVendor(name){
+  const v=VENDORS.find(x=>vShort(x.name)===name)||{name,addr:''};
+  const ps=partsOfVendor(name);
+  const left=ps.reduce((a,e)=>a+e.byVendor[name].left,0);
+  $('count').textContent='업체';
+  $('main').innerHTML=`
+    <a class="back" href="#/">‹ 업체 목록</a>
+    <div class="title"><h2>${esc(v.name)}</h2><small>${esc(v.addr||'')}</small>
+      ${v.addr?`<div class="row"><button class="btn" data-copy="${esc(v.addr)}">주소 복사</button><a class="btn map" href="${mapUrl(v.addr)}" target="_blank" rel="noopener">네이버지도</a></div>`:''}</div>
+    ${warnBox()}
+    <div class="sec"><h3>산 물건 <span>${ps.length}품목 · 남은 재고 ${left}개</span></h3>
+    ${ps.length?`<div class="list">${ps.map(e=>{ const b=e.byVendor[name]; return `<div class="rec" data-part="${esc(e.name)}">
+      <div><div class="t">${esc(e.name)}</div><div class="d">최근 ${mmdd(b.lastDate)} · 총 ${b.bought}개 삼</div></div>
+      <div class="m num">남은 <b class="${b.left?'':'left0'}">${b.left}개</b><br>${won(b.lastPrice)}원</div></div>`; }).join('')}</div>`
+      :'<div class="empty">아직 여기서 산 기록이 없어요.<br>아래 "+ 구매 기록"을 누르거나, 장부 메모에 "전진 수전 3개 12000" 처럼 적으세요.</div>'}</div>`;
+}
+function renderPart(vendor, partName){
+  const e=stock[ikey(partName)];
+  $('count').textContent='재고';
+  if(!e){ location.hash='#/vendor/'+encodeURIComponent(vendor); return; }
+  const lots=e.lots.slice().reverse();
+  const uses=e.uses.slice().reverse(), dis=e.discards.slice().reverse();
+  $('main').innerHTML=`
+    <a class="back" href="#/vendor/${encodeURIComponent(vendor)}">‹ ${esc(vendor)}</a>
+    <div class="title"><h2>${esc(e.name)}</h2><small>모든 구입처 합계</small></div>
+    <div class="stat num"><div><small>산 개수</small><strong>${e.bought}</strong></div>
+      <div><small>쓴 개수</small><strong>${e.used}</strong></div>
+      <div><small>남은 개수</small><strong style="color:var(--teal)">${e.left}</strong></div></div>
+    ${e.short?`<div class="warn">산 기록보다 ${e.short}개 더 썼어요. 구매 기록이 빠졌는지 확인해 주세요.</div>`:''}
+    <div class="sec"><h3>산 기록 <span>가게별 남은: ${Object.entries(e.byVendor).map(([k,b])=>`${esc(k)} ${b.left}개`).join(' · ')}</span></h3>
+      <div class="list">${lots.map(l=>`<div class="rec" data-buy="${l.id}">
+        <div><div class="t">${esc(l.vendor)}</div><div class="d">${esc(l.date||'')}${l.p.memo?' · '+esc(l.p.memo):''}</div></div>
+        <div class="m num">${l.qty}개 × ${won(l.price)}<br><b>${won(l.price*l.qty)}</b> <span class="tag ${l.left?'paid':''}">남은 ${l.left}</span></div></div>`).join('')}</div></div>
+    <div class="sec"><h3>쓴 곳 <span>${uses.length}건</span></h3>
+      ${uses.length?`<div class="list">${uses.map(u=>`<div class="rec" data-goto="#/v/${encodeURIComponent(u.r.villa||'')}/${encodeURIComponent(unitKey(u.r.unit))}">
+        <div><div class="t">${esc(u.r.villa||'')} ${esc(unitKey(u.r.unit))}호</div><div class="d">${esc(u.r.date||'')} · ${esc(u.r.item||'')}</div></div>
+        <div class="m num">${u.qty}개<br>${u.from.map(f=>`${esc(f.lot.vendor)} ${won(f.lot.price)}`).join(', ')||'<span style="color:var(--red)">재고 없음</span>'}</div></div>`).join('')}</div>`
+      :'<div class="empty">아직 쓴 곳이 없어요.</div>'}</div>
+    ${dis.length?`<div class="sec"><h3>반품·폐기 <span>${dis.length}건</span></h3><div class="list">${dis.map(x=>`<div class="rec" data-buy="${x.p.id}">
+      <div><div class="t">${esc(x.p.vendor||'')}</div><div class="d">${esc(x.date||'')}${x.p.memo?' · '+esc(x.p.memo):''}</div></div>
+      <div class="m num">${x.qty}개 뺌</div></div>`).join('')}</div></div>`:''}
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:14px">
+      <button class="btn" id="discardBtn">반품·폐기로 빼기</button></div>`;
+}
+
 /* ===== 화면 전환 (#/ , #/v/빌라 , #/v/빌라/호수) ===== */
 function route(){
+  stock=buildStock(purchases, ledger);
   const parts=decodeURIComponent(location.hash.replace(/^#\/?/,'')).split('/');
   const detail = parts[0]==='v' && parts[1];
-  $('bar').classList.toggle('hide',!!detail);
-  $('fab').hidden = !detail;
+  const vend = parts[0]==='vendor' && parts[1];
+  $('bar').classList.toggle('hide',!!(detail||vend));
+  $('fab').hidden = !(detail||vend);
+  $('fab').textContent = vend ? '+ 구매 기록' : '+ 수리 기록';
+  if(vend){ parts[2] ? renderPart(parts[1], parts[2]) : renderVendor(parts[1]); return; }
   if(!detail){ renderList(); return; }
   const v=VILLA_LIST.find(x=>x.name===parts[1]);
   if(!v){ location.hash='#/'; return; }
@@ -232,11 +321,11 @@ function renderList(){
   } else {
     $('count').textContent=`업체 ${VENDORS.length}곳`;
     const rows=VENDORS.filter(v=>!q||norm(v.name+v.addr).includes(q));
-    $('main').innerHTML=rows.length?'<div class="dong"><h2>자재 구입처</h2></div><div class="list">'+rows.map(v=>`<div class="item">
-      <div class="nm"><b>${esc(v.name)}</b><small>${esc(v.addr||(v.url?'온라인':'그 외 구입처'))}</small></div>
+    $('main').innerHTML=rows.length?'<div class="dong"><h2>자재 구입처</h2></div><div class="list">'+rows.map(v=>{ const vn=vShort(v.name), n=partsOfVendor(vn).reduce((a,e)=>a+e.byVendor[vn].left,0); return `<div class="item" data-vgo="${esc(vShort(v.name))}">
+      <div class="nm"><b>${esc(v.name)}${n?`<em>재고 ${n}개</em>`:''}</b><small>${esc(v.addr||(v.url?'온라인':'그 외 구입처'))}</small></div>
       ${v.addr?`<button class="btn" data-copy="${esc(v.addr)}">복사</button><a class="btn map" href="${mapUrl(v.addr)}" target="_blank" rel="noopener">지도</a>`:''}
       ${v.url?`<a class="btn map" href="${v.url}" target="_blank" rel="noopener">열기</a>`:''}
-    </div>`).join('')+'</div>':'<div class="empty">찾는 업체가 없어요.</div>';
+    </div>`; }).join('')+'</div>':'<div class="empty">찾는 업체가 없어요.</div>';
   }
 }
 
@@ -302,10 +391,28 @@ function openSheet(rec){
   $('fCost').value = rec?.cost ?? ''; $('fCharge').value = rec?.charge ?? '';
   $('fTarget').value = rec?.target || '건물주'; $('fMemo').value = rec?.memo || '';
   $('fPaid').checked = !!rec?.paid; $('sDel').style.display = rec ? '' : 'none';
-  updMargin(); document.body.classList.add('open');
+  ['fCost','fCharge','fVendor'].forEach(id=>$(id).dataset.auto='');
+  $('fItem').dataset.part = rec?.part || '';
+  $('fHint').textContent='';
+  $('itemList').innerHTML=[...new Set(ledger.map(r=>r.item).filter(Boolean))].slice(0,300).map(i=>`<option value="${esc(i)}">`).join('');
+  updMargin(); $('sheetWrap').classList.add('open');
   if(!rec) setTimeout(()=>($('fUnit').value?$('fItem'):$('fUnit')).focus(),250);
 }
-function closeSheet(){ document.body.classList.remove('open'); editing=null; }
+function fillPrice(){
+  const item=$('fItem').value.trim(), vendor=$('fVendor').value;
+  const part=findPart(item, Object.values(stock).map(e=>e.name));
+  $('fItem').dataset.part=part;
+  if(!part){ $('fHint').textContent=''; return; }
+  const e=stock[ikey(part)], sg=suggest(stock, part, vendor);
+  if(sg){
+    if(!vendor && $('fVendor').dataset.auto!=='0') $('fVendor').value=sg.vendor;
+    if($('fCost').value==='' || $('fCost').dataset.auto==='1'){ $('fCost').value=sg.price??''; $('fCost').dataset.auto='1'; }
+    updMargin();
+  }
+  const vs=Object.entries(e.byVendor).map(([k,b])=>`${esc(k)} ${b.left}개(${won(b.lastPrice)})`).join(' · ');
+  $('fHint').innerHTML=`📦 <b>${esc(part)}</b> 재고 ${e.left}개 — ${vs}`+(sg&&!sg.inStock?'<br>재고가 없어서 마지막 산 가격으로 넣었어요':'')+'<br>저장하면 재고에서 1개 빠져요';
+}
+function closeSheet(){ $('sheetWrap').classList.remove('open'); editing=null; }
 function updMargin(){ $('fMargin').value=won((toNum($('fCharge').value)??0)-(toNum($('fCost').value)??0)); }
 function saveSheet(){
   const c=curVilla(), unit=unitKey($('fUnit').value), item=$('fItem').value.trim();
@@ -313,7 +420,8 @@ function saveSheet(){
   if(!item){ toast('내용을 적어주세요'); $('fItem').focus(); return; }
   const cost=toNum($('fCost').value), charge=toNum($('fCharge').value);
   const data={ villa: editing?.villa || c.villa, unit, item, date:$('fDate').value, kind:$('fKind').value, vendor:$('fVendor').value,
-    cost, charge, margin:(charge??0)-(cost??0), target:$('fTarget').value, memo:$('fMemo').value.trim(), paid:$('fPaid').checked, needsCheck:false };
+    cost, charge, margin:(charge??0)-(cost??0), target:$('fTarget').value, memo:$('fMemo').value.trim(), paid:$('fPaid').checked, needsCheck:false,
+    part: findPart(item, Object.values(stock).map(e=>e.name)) || '', partQty:1 };
   const p = editing ? db.collection(LEDGER).doc(editing.id).update(data)
                     : db.collection(LEDGER).add({...data, raw:'', createdAt:Date.now()});
   p.catch(e=>toast('저장 실패: '+e.code));
@@ -325,6 +433,52 @@ function delRecord(){
   db.collection(LEDGER).doc(editing.id).delete().catch(e=>toast('삭제 실패: '+e.code));
   closeSheet(); toast('지웠어요');
 }
+
+/* ===== 구매 기록 입력 ===== */
+let buying=null;
+$('bVendor').innerHTML=VENDORS.map(v=>`<option>${esc(vShort(v.name))}</option>`).join('');
+function openBuy(rec, preset={}){
+  buying=rec||null;
+  $('bTitle').textContent = rec ? (rec.qty<0?'반품·폐기 수정':'구매 기록 수정') : (preset.discard?'반품·폐기':'구매 기록');
+  $('bDate').value = rec?.date || ymd(new Date());
+  $('bVendor').value = rec?.vendor || preset.vendor || VENDORS[0] && vShort(VENDORS[0].name);
+  $('bItem').value = rec?.item || preset.item || '';
+  $('bQty').value = rec ? Math.abs(rec.qty) : 1;
+  $('bPrice').value = rec?.unitPrice ?? '';
+  $('bMemo').value = rec?.memo || '';
+  $('buyWrap').dataset.discard = (rec ? rec.qty<0 : !!preset.discard) ? '1' : '';
+  $('bPrice').parentElement.style.display = $('buyWrap').dataset.discard ? 'none' : '';
+  $('bDel').style.display = rec ? '' : 'none';
+  $('partList').innerHTML=Object.values(stock).map(e=>`<option value="${esc(e.name)}">`).join('');
+  bHint(); $('buyWrap').classList.add('open');
+  if(!rec && !preset.item) setTimeout(()=>$('bItem').focus(),250);
+}
+function bHint(){
+  const q=toNum($('bQty').value)||0, pr=toNum($('bPrice').value);
+  const e=stock[ikey($('bItem').value)];
+  let h = (!$('buyWrap').dataset.discard && pr!=null) ? `합계 ${won(q*pr)}원` : '';
+  if(e){ const b=e.byVendor[$('bVendor').value]; h += (h?'<br>':'')+`지금 재고 ${e.left}개`+(b?` · 여기 마지막 ${won(b.lastPrice)}원 (${mmdd(b.lastDate)})`:''); }
+  $('bHint').innerHTML=h;
+}
+function closeBuy(){ $('buyWrap').classList.remove('open'); buying=null; }
+function saveBuy(){
+  const item=$('bItem').value.trim(), qty=toNum($('bQty').value), pr=toNum($('bPrice').value);
+  if(!item){ toast('품목을 적어주세요'); $('bItem').focus(); return; }
+  if(!qty||qty<=0){ toast('수량을 적어주세요'); $('bQty').focus(); return; }
+  const dis=!!$('buyWrap').dataset.discard;
+  const data={date:$('bDate').value, vendor:$('bVendor').value, item, qty: dis?-qty:qty,
+    unitPrice: dis?null:pr, total: dis||pr==null?null:pr*qty, memo:$('bMemo').value.trim()};
+  (buying ? db.collection(PUR).doc(buying.id).update(data) : db.collection(PUR).add({...data, raw:'', createdAt:Date.now()}))
+    .catch(e=>toast('저장 실패: '+e.code));
+  closeBuy(); toast(navigator.onLine?'저장했어요':'폰에 저장, 연결되면 올라가요');
+}
+function delBuy(){
+  if(!buying||!confirm('이 기록을 지울까요?')) return;
+  db.collection(PUR).doc(buying.id).delete().catch(e=>toast('삭제 실패: '+e.code));
+  closeBuy(); toast('지웠어요');
+}
+$('buyBg').onclick=closeBuy; $('bCancel').onclick=closeBuy; $('bSave').onclick=saveBuy; $('bDel').onclick=delBuy;
+['bQty','bPrice','bItem','bVendor'].forEach(id=>$(id).addEventListener('input',bHint));
 
 /* ===== 이벤트 ===== */
 let tt;function toast(m){const e=$('toast');e.textContent=m;e.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>e.classList.remove('show'),1800)}
@@ -341,6 +495,11 @@ $('main').addEventListener('click',e=>{
   if(cp){ e.stopPropagation(); const a=cp.dataset.copy;
     (navigator.clipboard?.writeText(a)||Promise.reject()).then(()=>toast('주소 복사했어요'),()=>prompt('복사해서 쓰세요',a)); return; }
   if(e.target.closest('a')) return;
+  const pt=e.target.closest('[data-part]'); if(pt){ const p=decodeURIComponent(location.hash.replace(/^#\/?/,'')).split('/'); location.hash=`#/vendor/${encodeURIComponent(p[1])}/${encodeURIComponent(pt.dataset.part)}`; return; }
+  const by=e.target.closest('[data-buy]'); if(by){ openBuy(purchases.find(x=>x.id===by.dataset.buy)); return; }
+  const gt=e.target.closest('[data-goto]'); if(gt){ location.hash=gt.dataset.goto; return; }
+  if(e.target.id==='discardBtn'){ const p=decodeURIComponent(location.hash.replace(/^#\/?/,'')).split('/'); openBuy(null,{vendor:p[1],item:stock[ikey(p[2])]?.name||p[2],discard:true}); return; }
+  const vg=e.target.closest('[data-vgo]'); if(vg){ location.hash='#/vendor/'+encodeURIComponent(vg.dataset.vgo); return; }
   const go=e.target.closest('[data-go]'); if(go){ location.hash='#/v/'+encodeURIComponent(go.dataset.go); return; }
   const un=e.target.closest('[data-unit]'); if(un){ location.hash=`#/v/${encodeURIComponent(curVilla().villa)}/${encodeURIComponent(un.dataset.unit)}`; return; }
   const rc=e.target.closest('[data-rec]'); if(rc){ openSheet(ledger.find(r=>r.id===rc.dataset.rec)); return; }
@@ -356,9 +515,16 @@ $('main').addEventListener('click',e=>{
     location.hash='#/v/'+encodeURIComponent(c.villa);
   }
 });
-$('fab').onclick=()=>openSheet();
+$('fab').onclick=()=>{
+  const p=decodeURIComponent(location.hash.replace(/^#\/?/,'')).split('/');
+  if(p[0]==='vendor') openBuy(null,{vendor:p[1], item:p[2]?(stock[ikey(p[2])]?.name||p[2]):''}); else openSheet();
+};
 $('sheetBg').onclick=closeSheet; $('sCancel').onclick=closeSheet; $('sSave').onclick=saveSheet; $('sDel').onclick=delRecord;
-$('fCost').oninput=updMargin; $('fCharge').oninput=updMargin;
+$('fCost').oninput=()=>{ $('fCost').dataset.auto='0'; updMargin(); };
+$('fCharge').oninput=()=>{ $('fCharge').dataset.auto='0'; updMargin(); };
+$('fItem').addEventListener('change',fillPrice);
+$('fItem').addEventListener('blur',fillPrice);
+$('fVendor').addEventListener('change',()=>{ $('fVendor').dataset.auto='0'; fillPrice(); });
 const fixBar=()=>$('bar').style.top=document.querySelector('header').offsetHeight+'px';
 fixBar(); addEventListener('resize',fixBar);
 renderChips(); route();

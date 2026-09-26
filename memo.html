@@ -154,6 +154,7 @@ label input,label select{display:block;width:100%;margin-top:4px;padding:10px;bo
 <div id="toast"></div>
 
 <script src="/villas.js"></script>
+<script src="/stock.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
@@ -267,17 +268,42 @@ function parseLine(line){
 }
 
 /* ===== 저장 (오프라인이면 폰에 대기 → 자동 업로드) ===== */
+/* 한 줄이 구매인지 수리인지 판단해서 정리 */
+function analyze(raw){
+  const p = parseLine(raw);
+  const isVilla = villas.includes(p.villa);
+  if(!isVilla && looksLikePurchase(raw) && !/청구/.test(raw)) return {type:'buy', b:parsePurchase(raw, ymd)};
+  const stock = buildStock(purchases, entries);
+  const fv = findVendor(raw);
+  if(fv){ p.vendor=fv.vendor; p.item=p.item.replace(fv.alias,' ').replace(/\s+/g,' ').trim(); }
+  const part = findPart(p.item, Object.values(stock).map(e=>e.name));
+  let info=null;
+  if(part){
+    p.part=part; p.partQty=1;
+    const sg=suggest(stock, part, p.vendor);
+    if(sg){ if(!p.vendor) p.vendor=sg.vendor; if(p.cost==null){ p.cost=sg.price; p.margin=(p.charge??0)-(p.cost??0); } }
+    info={part, left:stock[ikey(part)].left};
+  }
+  return {type:'fix', p, info};
+}
 function saveMemo(){
   const lines = $('memo').value.split('\n').map(s=>s.trim()).filter(Boolean);
   if(!lines.length){ toast('메모를 먼저 적어주세요'); $('memo').focus(); return; }
+  let nb=0, nf=0;
   lines.forEach((raw,i)=>{
-    const p = parseLine(raw);
-    db.collection(LEDGER).add({...p, raw, createdAt: Date.now()+i})
-      .catch(e=>toast('저장 실패: '+e.message));
+    const a = analyze(raw);
+    if(a.type==='buy'){ nb++;
+      db.collection('purchases').add({...a.b, memo:'', raw, createdAt: Date.now()+i}).catch(e=>toast('저장 실패: '+e.message));
+    } else { nf++;
+      db.collection(LEDGER).add({...a.p, raw, createdAt: Date.now()+i}).catch(e=>toast('저장 실패: '+e.message));
+    }
   });
   $('memo').value=''; localStorage.removeItem('memo-draft'); renderPreview();
-  toast(navigator.onLine ? `${lines.length}건 적었어요` : `${lines.length}건 폰에 저장, 연결되면 올라가요`);
+  const msg=[nf?`수리 ${nf}건`:'', nb?`구매 ${nb}건`:''].filter(Boolean).join(', ');
+  toast(navigator.onLine ? `${msg} 적었어요` : `${msg} 폰에 저장, 연결되면 올라가요`);
 }
+let purchases=[];
+db.collection('purchases').onSnapshot(s=>{ purchases=s.docs.map(d=>({id:d.id,...d.data()})); renderPreview(); },()=>{});
 
 /* ===== 실시간 동기화 ===== */
 
@@ -298,8 +324,12 @@ function renderChips(){
 function renderPreview(){
   const lines = $('memo').value.split('\n').map(s=>s.trim()).filter(Boolean).slice(-3);
   $('preview').innerHTML = lines.map(l=>{
-    const p = parseLine(l);
-    return `<div class="pv">${p.villa?`<b>${esc(p.villa)}</b>`:'<span class="warn">빌라?</span>'} ${p.unit?`<b>${esc(p.unit)}호</b>`:''} ${esc(p.item)||''}
+    const a = analyze(l);
+    if(a.type==='buy'){ const b=a.b;
+      return `<div class="pv">🛒 구매 <b>${esc(b.vendor)}</b> <b>${esc(b.item)||'품목?'}</b> · ${b.qty}개 × <b class="num">${won(b.unitPrice)}</b> = <b class="num">${won(b.total)}</b>
+        ${b.item?'':' <span class="warn">품목 확인</span>'}</div>`; }
+    const p = a.p;
+    return `<div class="pv">${a.info?`📦 ${esc(a.info.part)} 재고 ${a.info.left}개에서 1개 사용 · `:''}${p.villa?`<b>${esc(p.villa)}</b>`:'<span class="warn">빌라?</span>'} ${p.unit?`<b>${esc(p.unit)}호</b>`:''} ${esc(p.item)||''}
       · 매입 <b class="num">${won(p.cost)}</b> · 청구 <b class="num">${won(p.charge)}</b> · 마진 <b class="num">${won(p.margin)}</b>
       ${p.needsCheck?' <span class="warn">확인필요</span>':''}</div>`;
   }).join('');
