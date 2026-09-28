@@ -1,5 +1,5 @@
 // 현장 장부: 인터넷 없어도 페이지가 열리게 파일을 폰에 보관
-const CACHE = 'housecheon-v8';
+const CACHE = 'housecheon-v10';
 const FILES = [
   '/', '/index.html', '/memo.html', '/villas.js', '/stock.js', '/pay.js', '/manifest.json', '/memo-manifest.json', '/icon-192.png', '/icon-512.png',
   'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js',

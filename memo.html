@@ -44,6 +44,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .pv{font-size:13px;background:#fff;border:1px dashed #9cc9bd;border-radius:10px;padding:8px 10px;color:var(--soft)}
 .pv b{color:var(--ink)}
 .pv .warn{color:var(--red)}
+.pick{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.pick button{padding:6px 11px;border-radius:14px;border:1px solid var(--teal);background:#fff;color:var(--teal);font:inherit;font-size:13px;font-weight:700}
+.pick button.on{background:var(--teal);color:#fff}
+.pick button.no{border-color:var(--rule);color:var(--soft)}
 
 .sum{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--rule);
   border:1px solid var(--rule);border-radius:12px;overflow:hidden;margin:18px 0 12px}
@@ -213,7 +217,7 @@ function parseLine(line){
 
   // 숫자: 호수 / 수량 / 금액 구분
   const re = /(\d[\d,]*(?:\.\d+)?)\s*(?:(만)\s*(?:(\d+)\s*천)?|(천))?\s*(원)?/g;
-  let unit='', m; const amts=[], spans=[];
+  let unit='', m, qty=1; const amts=[], spans=[];
   while((m = re.exec(t))){
     if(!m[0].trim()){ re.lastIndex++; continue; }
     const s=m.index, e=s+m[0].length, after=t.slice(e,e+10), before=t.slice(Math.max(0,s-8),s);
@@ -224,7 +228,7 @@ function parseLine(line){
     if(!hasWon && ho && !unit){ unit=m[1]; spans.push([s,e+ho[0].length]); continue; }
     if(!hasWon && /^\s*층/.test(after)) continue;
     const q = after.match(/^\s*(개|ea|EA|장|미터|m|롤|박스|통)/);
-    if(!hasWon && q){ spans.push([s,e+q[0].length]); continue; }
+    if(!hasWon && q){ qty=Math.round(n)||1; spans.push([s,e+q[0].length]); continue; }
     if(hasWon || n>=5000){ amts.push({n:Math.round(n),after,before}); spans.push([s,e]); continue; }
     if(!unit){ unit=m[1]; spans.push([s,e]); }
   }
@@ -251,8 +255,10 @@ function parseLine(line){
 
   // 남은 글자 = 품목/내용
   spans.sort((a,b)=>b[0]-a[0]).forEach(([s,e])=>{ t=t.slice(0,s)+' '+t.slice(e); });
-  let item = t.replace(/(사서|사고|샀음|샀고|샀|구입해서|구입함|구입|구매|매입|청구함|청구했음|청구|받음|받았음|받기로|받을|입금완료|입금됨|입금|완납|건물주|건주|세입자|임차인|에게|한테|주고|원가)/g,' ')
-    .replace(/[,.·]/g,' ').replace(/\s(에|에서|을|를|원|하고|해서|후|및)\s/g,' ').replace(/\s+/g,' ').trim();
+  const each = /각|개당|하나에|한개에|낱개/.test(src);
+  if(each && qty>1){ if(charge!=null) charge*=qty; if(cost!=null) cost*=qty; }
+  let item = t.replace(/(각자|각각|각|개당|하나에|한개에|낱개|사서|사고|샀음|샀고|샀|구입해서|구입함|구입|구매|매입|청구함|청구했음|청구|받음|받았음|받기로|받을|입금완료|입금됨|입금|완납|건물주|건주|세입자|임차인|에게|한테|주고|원가)/g,' ')
+    .replace(/[,.·]/g,' ').replace(/\s(에|에서|을|를|원|워니|원니|니|하고|해서|후|및)(?=\s)/g,' ').replace(/\s+/g,' ').trim();
 
   let kind='기타';
   if(/이사|정산/.test(src)) kind='이사정산';
@@ -265,7 +271,7 @@ function parseLine(line){
   const paid = /입금완료|입금됨|받음|받았|완납|결제완료/.test(src);
   const margin = (charge??0)-(cost??0);
   const needsCheck = kind==='구매' ? cost===null : (!villas.includes(villa) || !unit || charge===null);
-  return {date:ymd(d), villa, unit, item, kind, cost, charge, margin, target, paid, needsCheck};
+  return {date:ymd(d), villa, unit, item, kind, cost, charge, margin:(charge??0)-(cost??0), target, paid, needsCheck, qty};
 }
 
 /* ===== 저장 (오프라인이면 폰에 대기 → 자동 업로드) ===== */
@@ -284,15 +290,22 @@ function analyze(raw){
   const stock = buildStock(purchases, entries);
   const fv = findVendor(raw);
   if(fv){ p.vendor=fv.vendor; p.item=p.item.replace(fv.alias,' ').replace(/\s+/g,' ').trim(); }
-  const part = findPart(p.item, Object.values(stock).map(e=>e.name));
+  const cands = findParts(p.item, Object.values(stock).map(e=>e.name));
+  const chosen = partChoice[raw];
+  let part = chosen!==undefined ? chosen : (cands.length===1 ? cands[0] : '');
+  const ask = cands.length>1 ? {cands, chosen} : null;
+  if(ask && chosen===undefined) p.needsCheck=true;   // 여러 개 중 못 골랐으면 확인필요
   let info=null;
   if(part){
-    p.part=part; p.partQty=1;
+    p.part=part; p.partQty=p.qty||1;
     const sg=suggest(stock, part, p.vendor);
-    if(sg && p.cost==null){ p.margin=(p.charge??0)-sg.price; }   // 원가는 저장 안 하고 재고에서 계산
-    info={part, left:stock[ikey(part)].left};
+    const e=stock[ikey(part)]; let need=p.partQty, est=0;
+    for(const l of e.lots){ if(need<=0) break; const t=Math.min(l.left,need); est+=t*l.price; need-=t; }
+    if(p.cost==null) p.margin=(p.charge??0)-est;   // 원가는 저장 안 하고 재고에서 계산
+    info={part, left:e.left, qty:p.partQty, est};
   }
-  return {type:'fix', p, info};
+  delete p.qty;
+  return {type:'fix', p, info, ask, guessed: cands.length===1 && !ikey(p.item).includes(ikey(cands[0])) ? cands[0] : ''};
 }
 function saveMemo(){
   const lines = $('memo').value.split('\n').map(s=>s.trim()).filter(Boolean);
@@ -313,11 +326,11 @@ function saveMemo(){
       db.collection(LEDGER).add({...a.p, raw, createdAt: Date.now()+i}).catch(e=>toast('저장 실패: '+e.message));
     }
   });
-  $('memo').value=''; localStorage.removeItem('memo-draft'); renderPreview();
+  $('memo').value=''; localStorage.removeItem('memo-draft'); partChoice={}; renderPreview();
   const msg=[nf?`수리 ${nf}건`:'', nb?`구매 ${nb}건`:'', np?`입금 ${np}건`:''].filter(Boolean).join(', ');
   toast(navigator.onLine ? `${msg} 적었어요` : `${msg} 폰에 저장, 연결되면 올라가요`);
 }
-let purchases=[], owners={};
+let purchases=[], owners={}, partChoice={};   // partChoice: 줄 → 고른 재고 품목
 db.collection('villaInfo').onSnapshot(s=>{ owners={}; s.docs.forEach(d=>owners[d.id]=d.data()); renderPreview(); },()=>{});
 db.collection('purchases').onSnapshot(s=>{ purchases=s.docs.map(d=>({id:d.id,...d.data()})); renderPreview(); renderList(); },()=>{});
 
@@ -338,9 +351,13 @@ function renderChips(){
   $('villaList').innerHTML = villas.map(v=>`<option value="${esc(v)}">`).join('');
 }
 function renderPreview(){
-  const lines = $('memo').value.split('\n').map(s=>s.trim()).filter(Boolean).slice(-3);
+  const lines = $('memo').value.split('\n').map(s=>s.trim()).filter(Boolean).slice(-10);
   $('preview').innerHTML = lines.map(l=>{
     const a = analyze(l);
+    const pickHtml = a.ask ? `<div style="margin-top:6px">어느 거 썼어요?</div><div class="pick">`+
+      a.ask.cands.map(c=>`<button data-line="${esc(l)}" data-part="${esc(c)}" class="${a.ask.chosen===c?'on':''}">${esc(c)}</button>`).join('')+
+      `<button data-line="${esc(l)}" data-part="" class="no${a.ask.chosen===''?' on':''}">재고 안 씀</button></div>` : '';
+    const guessHtml = a.guessed ? ` <span style="color:var(--teal)">(→ ${esc(a.guessed)}로 인식)</span>` : '';
     if(a.type==='pay'){ const y=a.pay;
       return `<div class="pv">💰 입금 <b>${esc(y.name)||'이름?'}</b> <b class="num">${won(y.amount)}</b> · `+
         (a.recs.length ? `${a.recs.map(r=>`${esc(r.villa)} ${esc(r.unit)}호`).join(', ')} <b>입금처리</b>`
@@ -349,9 +366,9 @@ function renderPreview(){
       return `<div class="pv">🛒 구매 <b>${esc(b.vendor)}</b> <b>${esc(b.item)||'품목?'}</b> · ${b.qty}개 × <b class="num">${won(b.unitPrice)}</b> = <b class="num">${won(b.total)}</b>
         ${b.item?'':' <span class="warn">품목 확인</span>'}</div>`; }
     const p = a.p;
-    return `<div class="pv">${a.info?`📦 ${esc(a.info.part)} 재고 ${a.info.left}개에서 1개 사용 · `:''}${p.villa?`<b>${esc(p.villa)}</b>`:'<span class="warn">빌라?</span>'} ${p.unit?`<b>${esc(p.unit)}호</b>`:''} ${esc(p.item)||''}
-      · 매입 <b class="num">${won(p.cost)}</b> · 청구 <b class="num">${won(p.charge)}</b> · 마진 <b class="num">${won(p.margin)}</b>
-      ${p.needsCheck?' <span class="warn">확인필요</span>':''}</div>`;
+    return `<div class="pv">${a.info?`📦 ${esc(a.info.part)} 재고 ${a.info.left}개에서 <b>${a.info.qty}개</b> 사용${a.info.qty>a.info.left?' <span class="warn">(재고 부족)</span>':''} · `:''}${p.villa?`<b>${esc(p.villa)}</b>`:'<span class="warn">빌라?</span>'} ${p.unit?`<b>${esc(p.unit)}호</b>`:''} ${esc(p.item)||''}${guessHtml}
+      · 원가 <b class="num">${won(a.info ? a.info.est : p.cost)}</b> · 청구 <b class="num">${won(p.charge)}</b> · 마진 <b class="num">${won(p.margin)}</b>
+      ${p.needsCheck?' <span class="warn">확인필요</span>':''}${pickHtml}</div>`;
   }).join('');
 }
 function renderNet(){
@@ -435,6 +452,10 @@ $('memo').value = localStorage.getItem('memo-draft')||'';
 $('memo').addEventListener('input',()=>{ localStorage.setItem('memo-draft',$('memo').value); renderPreview(); });
 $('memo').addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)) saveMemo(); });
 $('saveBtn').onclick = saveMemo;
+$('preview').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-line]'); if(!b) return;
+  partChoice[b.dataset.line]=b.dataset.part; renderPreview();
+});
 $('chips').onclick = e=>{
   const v=e.target.dataset?.v; if(!v) return;
   const ta=$('memo'); const cur=ta.value;

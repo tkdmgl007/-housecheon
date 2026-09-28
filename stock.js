@@ -9,6 +9,15 @@ const asc = (a,b)=>(a.date||'').localeCompare(b.date||'')||(a.createdAt||0)-(b.c
 
 function findVendor(text){ for(const [a,v] of VA) if(String(text).includes(a)) return {alias:a, vendor:v}; return null; }
 
+/* "알전구" → [led 알전구, 일반 알전구] 처럼 비슷한 재고 후보 전부 */
+function findParts(text, names){
+  const exact=findPart(text, names); if(exact) return [exact];
+  const words=String(text||'').split(/\s+/).map(w=>ikey(w).replace(/(교체|수리|설치|작업|갈이|갈아줌|달아줌|교환)$/,'')).filter(w=>w.length>=2);
+  const whole=ikey(text).replace(/(교체|수리|설치|작업|교환)/g,'');
+  if(whole.length>=2) words.push(whole);
+  const out=names.filter(n=>{ const nk=ikey(n); return words.some(w=>nk.includes(w)); });
+  return [...new Set(out)].sort((a,b)=>a.localeCompare(b,'ko'));
+}
 function findPart(text, names){
   const k=ikey(text); let best='';
   for(const n of names){ const nk=ikey(n); if(nk.length>=1 && k.includes(nk) && nk.length>ikey(best).length) best=n; }
@@ -94,5 +103,5 @@ function parsePurchase(line, ymd){
 }
 const looksLikePurchase = line => !!findVendor(line) || /(샀|구입|구매|사옴)/.test(line);
 
-Object.assign(window,{effCost, effMargin, VENDOR_ALIASES:VA, ikey, findVendor, findPart, buildStock, suggest, parsePurchase, looksLikePurchase});
+Object.assign(window,{findParts, effCost, effMargin, VENDOR_ALIASES:VA, ikey, findVendor, findPart, buildStock, suggest, parsePurchase, looksLikePurchase});
 })();

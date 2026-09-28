@@ -80,6 +80,9 @@ main{max-width:680px;margin:0 auto;padding:6px 12px 90px}
   box-shadow:0 4px 14px rgba(15,107,94,.3)}
 .hint{font-size:12px;color:var(--teal);background:var(--paper);border-radius:8px;padding:8px 10px;margin:-4px 0 10px;line-height:1.6}
 .hint:empty{display:none}
+.pickrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.pickrow button{padding:6px 11px;border-radius:14px;border:1px solid var(--teal);background:#fff;color:var(--teal);font:inherit;font-size:13px;font-weight:700}
+.pickrow button.on{background:var(--teal);color:#fff}.pickrow button.no{border-color:var(--rule);color:var(--soft)}
 .warn{background:#fdecea;color:var(--red);border-radius:10px;padding:10px 12px;font-size:13px;margin-top:10px;line-height:1.5}
 
 /* 입력 시트 */
@@ -421,6 +424,7 @@ function openSheet(rec){
   $('fTarget').value = rec?.target || '건물주'; $('fMemo').value = rec?.memo || '';
   $('fPaid').checked = !!rec?.paid; $('sDel').style.display = rec ? '' : 'none';
   $('fItem').dataset.part = rec?.part || '';
+  if(rec) $('fItem').dataset.choice = rec.part||''; else delete $('fItem').dataset.choice;
   $('fHint').textContent='';
   $('itemList').innerHTML=[...new Set(ledger.map(r=>r.item).filter(Boolean))].slice(0,300).map(i=>`<option value="${esc(i)}">`).join('');
   fillPrice(); $('sheetWrap').classList.add('open');
@@ -428,14 +432,19 @@ function openSheet(rec){
 }
 function fillPrice(){
   const item=$('fItem').value.trim();
-  const part=findPart(item, Object.values(stock).map(e=>e.name));
+  const cands=findParts(item, Object.values(stock).map(e=>e.name));
+  const ch=$('fItem').dataset.choice;   // 사용자가 고른 것 ('' = 재고 안 씀)
+  const part = ch!==undefined && ch!=='__' && (ch==='' || cands.includes(ch)) ? ch : (cands.length===1 ? cands[0] : '');
   $('fItem').dataset.part=part;
+  const pick = cands.length>1 ? `<div style="margin-top:6px">어느 거 썼어요?</div><div class="pickrow">`+
+    cands.map(c=>`<button type="button" data-choose="${esc(c)}" class="${part===c?'on':''}">${esc(c)}</button>`).join('')+
+    `<button type="button" data-choose="" class="no${part===''&&ch===''?' on':''}">재고 안 씀</button></div>` : '';
   $('qtyBox').style.display = part ? '' : 'none';
-  if(!part){ $('fHint').textContent = item ? '재고에 없는 물건이라 원가 0원으로 계산돼요 (얻었거나 안 산 것)' : ''; updMargin(); return; }
+  if(!part){ $('fHint').innerHTML = (cands.length>1 ? '비슷한 재고가 여러 개예요.' : (item ? '재고에 없는 물건이라 원가 0원으로 계산돼요 (얻었거나 안 산 것)' : ''))+pick; updMargin(); return; }
   const e=stock[ikey(part)];
   const mine = editing && editing.part ? (editing.partQty||1) : 0;   // 수정 중이면 이 기록이 쓴 만큼은 재고로 돌려놓고 봄
   const vs=Object.entries(e.byVendor).map(([k,b])=>`${esc(k)} ${b.left}개`).join(' · ');
-  $('fHint').innerHTML=`📦 <b>${esc(part)}</b> 재고 ${e.left+mine}개 (${vs})<br>저장하면 재고에서 빠지고 원가가 자동으로 잡혀요`;
+  $('fHint').innerHTML=`📦 <b>${esc(part)}</b> 재고 ${e.left+mine}개 (${vs})<br>저장하면 재고에서 빠지고 원가가 자동으로 잡혀요`+pick;
   updMargin();
 }
 function closeSheet(){ $('sheetWrap').classList.remove('open'); editing=null; }
@@ -452,7 +461,7 @@ function saveSheet(){
   const c=curVilla(), unit=unitKey($('fUnit').value), item=$('fItem').value.trim();
   if(!unit){ toast('호수를 적어주세요'); $('fUnit').focus(); return; }
   if(!item){ toast('내용을 적어주세요'); $('fItem').focus(); return; }
-  const charge=toNum($('fCharge').value), part=findPart(item, Object.values(stock).map(e=>e.name))||'', cost=estCost();
+  fillPrice(); const charge=toNum($('fCharge').value), part=$('fItem').dataset.part||'', cost=estCost();
   const data={ villa: editing?.villa || c.villa, unit, item, date:$('fDate').value, kind:$('fKind').value, 
     charge, margin:(charge??0)-cost, target:$('fTarget').value, memo:$('fMemo').value.trim(), paid:$('fPaid').checked, paidDate: $('fPaid').checked ? (editing?.paidDate || ymd(new Date())) : '', needsCheck:false,
     part, partQty: part ? (toNum($('fQty').value)||1) : 0 };
@@ -644,9 +653,8 @@ $('fab').onclick=()=>{
 };
 $('sheetBg').onclick=closeSheet; $('sCancel').onclick=closeSheet; $('sSave').onclick=saveSheet; $('sDel').onclick=delRecord;
 $('fCharge').oninput=updMargin; $('fQty').oninput=updMargin;
-$('fItem').addEventListener('change',fillPrice);
-$('fItem').addEventListener('input',fillPrice);
-$('fItem').addEventListener('blur',fillPrice);
+$('fItem').addEventListener('input',()=>{ delete $('fItem').dataset.choice; fillPrice(); });
+$('fHint').addEventListener('click',e=>{ const b=e.target.closest('[data-choose]'); if(!b) return; $('fItem').dataset.choice=b.dataset.choose; fillPrice(); });
 const fixBar=()=>$('bar').style.top=document.querySelector('header').offsetHeight+'px';
 fixBar(); addEventListener('resize',fixBar);
 renderChips(); route();
