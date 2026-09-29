@@ -17,6 +17,32 @@ header{position:sticky;top:0;z-index:20;background:var(--teal);color:#fff;paddin
 .top{display:flex;align-items:baseline;justify-content:space-between;padding:12px 16px 8px}
 .top h1{font-size:18px;font-weight:700}
 .top small{font-size:12px;opacity:.8}
+.topr{display:flex;align-items:center;gap:10px}
+.topr .memo{color:#fff;text-decoration:none;font-size:13px;font-weight:700;background:rgba(255,255,255,.16);padding:5px 10px;border-radius:14px}
+.tabs button em{font-style:normal;font-size:11px;background:var(--amber);color:#3a2600;border-radius:8px;padding:0 5px;margin-left:3px;vertical-align:2px}
+/* 할 일 */
+.task{display:flex;align-items:flex-start;gap:10px;padding:12px 12px 12px 12px;border-top:1px solid var(--rule);cursor:pointer}
+.task:first-child{border-top:0}
+.task .ck{flex:none;width:24px;height:24px;border-radius:50%;border:2px solid var(--teal);background:#fff;margin-top:1px;cursor:pointer}
+.task.done .ck{background:var(--teal);box-shadow:inset 0 0 0 3px #fff}
+.task.done .tt{color:var(--soft);text-decoration:line-through}
+.task .tt{flex:1;min-width:0;font-weight:600}
+.task .tt small{display:block;font-weight:500;font-size:12px;color:var(--soft);margin-top:2px}
+.task .when{flex:none;font-size:12px;font-weight:700;color:var(--teal);margin-top:3px}
+.task.late .when{color:var(--red)}
+/* 내역 */
+.month{display:flex;align-items:center;justify-content:center;gap:18px;margin:12px 0 8px}
+.month button{background:none;border:0;font-size:22px;color:var(--teal);padding:4px 10px;cursor:pointer}
+.month b{font-size:18px}
+.day{font-size:14px;font-weight:800;margin:16px 4px 4px}
+.tx{display:flex;align-items:flex-start;gap:10px;padding:13px 4px;border-bottom:1px solid var(--rule);cursor:pointer}
+.tx .nm{flex:1;min-width:0}
+.tx .nm b{display:block;font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx .nm small{display:block;font-size:13px;color:var(--soft);margin-top:3px}
+.tx .nm small i{font-style:normal;color:#2563c9;margin-left:4px}
+.tx .amt{text-align:right;font-weight:800;font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tx .amt.in{color:#2563c9}
+.tx .amt small{display:block;font-weight:500;font-size:12px;color:var(--soft);margin-top:3px}
 .tabs{display:flex}
 .tabs a,.tabs button{flex:1;text-align:center;padding:11px 0;background:none;border:0;color:rgba(255,255,255,.7);
   font:inherit;font-size:15px;font-weight:700;text-decoration:none;border-bottom:3px solid transparent}
@@ -89,7 +115,7 @@ main{max-width:680px;margin:0 auto;padding:6px 12px 90px}
 .sheet-bg{position:fixed;inset:0;background:rgba(18,51,46,.45);display:none;z-index:30}
 .sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:#fff;border-radius:18px 18px 0 0;max-width:680px;margin:0 auto;
   padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 16px);max-height:90vh;overflow:auto;transform:translateY(100%);transition:transform .22s ease}
-#sheetWrap.open .sheet-bg,#buyWrap.open .sheet-bg,#payWrap.open .sheet-bg{display:block} #sheetWrap.open .sheet,#buyWrap.open .sheet,#payWrap.open .sheet{transform:none}
+#sheetWrap.open .sheet-bg,#buyWrap.open .sheet-bg,#payWrap.open .sheet-bg,#taskWrap.open .sheet-bg{display:block} #sheetWrap.open .sheet,#buyWrap.open .sheet,#payWrap.open .sheet,#taskWrap.open .sheet{transform:none}
 .pick{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--rule);border-radius:10px;margin-bottom:6px;font-size:14px}
 .pick input{width:20px;height:20px;flex:none}.pick span{flex:1}.pick b{font-variant-numeric:tabular-nums}
 .owner{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:14px}.owner b{font-size:15px}
@@ -114,12 +140,13 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 </head>
 <body>
 <header>
-  <div class="top"><h1>하우스주택관리</h1><small id="count"></small></div>
+  <div class="top"><h1>하우스주택관리</h1><div class="topr"><small id="count"></small><a class="memo" href="/memo.html">✏️ 장부</a></div></div>
   <nav class="tabs">
     <button data-tab="villa" class="on">빌라</button>
-    <button data-tab="vendor">업체</button>
+    <button data-tab="todo">할일</button>
+    <button data-tab="hist">내역</button>
     <button data-tab="pay">입금</button>
-    <a href="/memo.html">장부</a>
+    <button data-tab="vendor">업체</button>
   </nav>
 </header>
 <div class="bar" id="bar">
@@ -199,11 +226,32 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
     </div>
   </div>
 </div>
+<div id="taskWrap">
+  <div class="sheet-bg" id="taskBg"></div>
+  <div class="sheet" role="dialog" aria-label="할 일">
+    <h2 id="tTitle">할 일</h2>
+    <label>할 일<input id="tText" placeholder="예: 화장실 등 수리 필요"></label>
+    <div class="g2">
+      <label>빌라<select id="tVilla"></select></label>
+      <label>호수<input id="tUnit" inputmode="numeric" placeholder="예: 102"></label>
+      <label>날짜<input type="date" id="tDate"></label>
+      <label>시간<input type="time" id="tTime"></label>
+    </div>
+    <div class="btns">
+      <button class="pri" id="tSave">저장</button>
+      <button id="tDone">완료</button>
+      <button id="tToRec">수리 기록으로 넘기기</button>
+      <button id="tCancel">닫기</button>
+      <button class="del" id="tDel">삭제</button>
+    </div>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script src="/villas.js"></script>
 <script src="/stock.js"></script>
 <script src="/pay.js"></script>
+<script src="/tasks.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
@@ -240,6 +288,9 @@ const PUR='purchases';
 let owners={}, payments=[];
 db.collection('villaInfo').onSnapshot(s=>{ owners={}; s.docs.forEach(d=>owners[d.id]=d.data()); route(); },()=>{});
 db.collection('payments').onSnapshot(s=>{ payments=s.docs.map(d=>({id:d.id,...d.data()})); route(); },()=>{});
+let tasks=[];
+db.collection('tasks').onSnapshot(s=>{ tasks=s.docs.map(d=>({id:d.id,...d.data()})); route(); },()=>{});
+const openTasks=(villa,unit)=>tasks.filter(t=>!t.done && (villa===undefined||t.villa===villa) && (unit===undefined||String(t.unit||'')===String(unit)));
 const ownerOf=v=>(owners[v]&&owners[v].owner)||'';
 const villasOfOwner=n=>VILLA_LIST.filter(v=>n && ownerOf(v.name)===n).map(v=>v.name);
 db.collection(PUR).onSnapshot(s=>{ purchases=s.docs.map(d=>({id:d.id,...d.data()})); route(); }, e=>{ fbErr=e.code; route(); });
@@ -311,11 +362,14 @@ function route(){
   const parts=decodeURIComponent(location.hash.replace(/^#\/?/,'')).split('/');
   const detail = parts[0]==='v' && parts[1];
   const vend = parts[0]==='vendor' && parts[1];
-  $('bar').classList.toggle('hide',!!(detail||vend||tab==='pay'));
-  $('fab').hidden = !(detail||vend||tab==='pay');
-  $('fab').textContent = vend ? '+ 구매 기록' : (detail ? '+ 수리 기록' : '+ 입금 기록');
+  const listOnly = tab==='pay'||tab==='todo'||tab==='hist';
+  $('bar').classList.toggle('hide',!!(detail||vend||listOnly));
+  $('fab').hidden = !(detail||vend||tab==='pay'||tab==='todo');
+  $('fab').textContent = vend ? '+ 구매 기록' : (detail ? '+ 수리 기록' : (tab==='todo' ? '+ 할 일' : '+ 입금 기록'));
+  const nOpen=openTasks().length;
+  document.querySelector('[data-tab="todo"]').innerHTML = '할일'+(nOpen?`<em>${nOpen}</em>`:'');
   if(vend){ parts[2] ? renderPart(parts[1], parts[2]) : renderVendor(parts[1]); return; }
-  if(!detail){ tab==='pay' ? renderPay() : renderList(); return; }
+  if(!detail){ ({pay:renderPay, todo:renderTodo, hist:renderHist}[tab] || renderList)(); return; }
   const v=VILLA_LIST.find(x=>x.name===parts[1]);
   if(!v){ location.hash='#/'; return; }
   if(parts[2]) renderUnit(v, parts[2]); else renderVilla(v);
@@ -344,8 +398,8 @@ function renderList(){
         .sort((a,b)=>a.name.localeCompare(b.name,'ko'));
       if(!rows.length) continue;
       html+=`<div class="dong"><h2>${d}</h2><span>${rows[0].gu} · ${rows.length}곳</span></div><div class="list">`+
-        rows.map(v=>{ const n=unitsOf(v.name).length; return `<div class="item" data-go="${esc(v.name)}">
-          <div class="nm"><b>${esc(v.name)}${n?`<em>${n}세대</em>`:''}</b><small>${esc(v.addr)}</small></div>
+        rows.map(v=>{ const n=unitsOf(v.name).length, nt=openTasks(v.name).length; return `<div class="item" data-go="${esc(v.name)}">
+          <div class="nm"><b>${esc(v.name)}${n?`<em>${n}세대</em>`:''}${nt?`<em style="background:var(--amberbg);color:var(--amberink)">할일 ${nt}</em>`:''}</b><small>${esc(v.addr)}</small></div>
           <button class="btn" data-copy="${esc(v.addr)}">복사</button>
           <a class="btn map" href="${mapUrl(v.addr)}" target="_blank" rel="noopener">지도</a>
         </div>`; }).join('')+'</div>';
@@ -374,10 +428,12 @@ function renderVilla(v){
       <div class="row"><button class="btn" data-copy="${esc(v.addr)}">주소 복사</button>
       <a class="btn map" href="${mapUrl(v.addr)}" target="_blank" rel="noopener">네이버지도</a></div></div>
     ${warnBox()}
+    ${taskSec(v.name)}
     <div class="sec"><h3>호수 <span>${us.length}세대${unpaid?` · 미수 ${won(unpaid)}원`:''}</span></h3>
       <div class="units">
         ${us.map(u=>{ const rs=recordsOf(v.name,u); const due=rs.some(r=>!r.paid&&r.charge);
-          return `<button class="unit${due?' due':''}" data-unit="${esc(u)}"><b>${esc(u)}호</b><small>${rs.length?`기록 ${rs.length}건`:'기록 없음'}</small></button>`; }).join('')}
+          const nt=openTasks(v.name,u).length;
+          return `<button class="unit${due?' due':''}" data-unit="${esc(u)}"><b>${esc(u)}호</b><small>${rs.length?`기록 ${rs.length}건`:'기록 없음'}${nt?` · 할일 ${nt}`:''}</small></button>`; }).join('')}
         <button class="unit add" id="addUnit">+ 호수</button>
       </div>
       ${us.length?'':'<div class="empty">아직 호수가 없어요.<br>수리하러 가면 아래 "+ 수리 기록"으로 적으세요. 호수가 자동으로 생겨요.</div>'}
@@ -395,13 +451,14 @@ function renderUnit(v,u){
     <a class="back" href="#/v/${encodeURIComponent(v.name)}">‹ ${esc(v.name)}</a>
     <div class="title"><h2>${esc(v.name)} ${esc(u)}호</h2><small>${esc(v.addr)}</small></div>
     ${warnBox()}
+    ${taskSec(v.name,u)}
     <div class="sum num"><div><small>총 청구</small><strong>${won(sum('charge'))}</strong></div>
       <div><small>마진</small><strong style="color:var(--teal)">${won(recs.reduce((a,r)=>a+effMargin(stock,r),0))}</strong></div>
       <div><small>미수</small><strong style="color:var(--amberink)">${won(unpaid)}</strong></div></div>
     <div class="sec"><h3>수리 기록 <span>${recs.length}건</span></h3>
       ${recs.length?`<div class="list">${recs.map(recRow).join('')}</div>`:'<div class="empty">아직 기록이 없어요. 아래 "+ 수리 기록"을 누르세요.</div>'}
     </div>
-    ${recs.length?'':`<div style="text-align:center;margin-top:10px"><button class="btn" id="delUnit">이 호수 지우기</button></div>`}`;
+    ${recs.length||openTasks(v.name,u).length?'':`<div style="text-align:center;margin-top:10px"><button class="btn" id="delUnit">이 호수 지우기</button></div>`}`;
 }
 function recRow(r){
   return `<div class="rec" data-rec="${r.id}">
@@ -476,6 +533,109 @@ function delRecord(){
   if(!editing||!confirm('이 기록을 지울까요?')) return;
   db.collection(LEDGER).doc(editing.id).delete().catch(e=>toast('삭제 실패: '+e.code));
   closeSheet(); toast('지웠어요');
+}
+
+/* ===== 할 일 ===== */
+const todayStr=()=>ymd(new Date());
+function taskRow(t, showVilla=true){
+  const late = !t.done && t.date && t.date < todayStr();
+  const where = [showVilla&&t.villa?t.villa:'', t.unit?t.unit+'호':''].filter(Boolean).join(' ');
+  return `<div class="task${t.done?' done':''}${late?' late':''}" data-task="${t.id}">
+    <button class="ck" data-check="${t.id}" aria-label="완료"></button>
+    <div class="tt">${esc(t.text||'(내용 없음)')}${where?`<small>${esc(where)}</small>`:''}</div>
+    <div class="when">${esc(whenLabel(t.date,t.time))}${late?' 지남':''}</div></div>`;
+}
+const taskSort=(a,b)=>((a.date||'9999')+(a.time||'99')).localeCompare((b.date||'9999')+(b.time||'99'))||(a.createdAt||0)-(b.createdAt||0);
+function taskSec(villa,unit){
+  const ts=openTasks(villa,unit).sort(taskSort);
+  return `<div class="sec"><h3>할 일 <span>${ts.length}건 <button class="btn" id="addTask" style="padding:4px 9px;margin-left:6px">+ 할 일</button></span></h3>
+    ${ts.length?`<div class="list">${ts.map(t=>taskRow(t, false)).join('')}</div>`:''}</div>`;
+}
+function renderTodo(){
+  const open=tasks.filter(t=>!t.done).sort(taskSort), td=todayStr();
+  const tm=new Date(); tm.setDate(tm.getDate()+1); const tmr=ymd(tm);
+  const groups=[['지난 일',t=>t.date&&t.date<td],['오늘',t=>t.date===td],['내일',t=>t.date===tmr],['다음',t=>t.date&&t.date>tmr],['날짜 없음',t=>!t.date]];
+  const done=tasks.filter(t=>t.done).sort((a,b)=>(b.doneAt||0)-(a.doneAt||0)).slice(0,20);
+  $('count').textContent=`할 일 ${open.length}건`;
+  let html=warnBox();
+  for(const [name,f] of groups){ const ts=open.filter(f); if(!ts.length) continue;
+    html+=`<div class="dong"><h2 style="${name==='지난 일'?'color:var(--red)':''}">${name}</h2><span>${ts.length}건</span></div><div class="list">${ts.map(t=>taskRow(t)).join('')}</div>`; }
+  if(!open.length) html+='<div class="empty">할 일이 없어요 👍<br>장부 메모에 "보금자리 102호 화장실등 수리필요" 처럼 적으면 여기 들어와요.</div>';
+  if(done.length) html+=`<div class="dong"><h2>완료</h2><span>최근 ${done.length}건</span></div><div class="list">${done.map(t=>taskRow(t)).join('')}</div>`;
+  $('main').innerHTML=html;
+}
+let tasking=null;
+function openTask(t, preset={}){
+  tasking=t||null;
+  $('tTitle').textContent=t?'할 일 수정':'할 일 추가';
+  $('tVilla').innerHTML='<option value="">(빌라 없음)</option>'+VILLA_LIST.map(v=>`<option>${esc(v.name)}</option>`).join('');
+  $('tText').value=t?.text||''; $('tVilla').value=t?.villa ?? preset.villa ?? ''; $('tUnit').value=t?.unit ?? preset.unit ?? '';
+  $('tDate').value=t?.date||''; $('tTime').value=t?.time||'';
+  $('tDone').textContent = t?.done ? '다시 할 일로' : '완료';
+  $('tDone').style.display = $('tDel').style.display = t ? '' : 'none';
+  $('tToRec').style.display = t && !t.done ? '' : 'none';
+  $('taskWrap').classList.add('open'); if(!t) setTimeout(()=>$('tText').focus(),250);
+}
+function closeTask(){ $('taskWrap').classList.remove('open'); tasking=null; }
+function taskData(){ return {text:$('tText').value.trim(), villa:$('tVilla').value, unit:unitKey($('tUnit').value), date:$('tDate').value, time:$('tTime').value}; }
+function saveTask(){
+  const d=taskData(); if(!d.text){ toast('할 일을 적어주세요'); $('tText').focus(); return; }
+  (tasking ? db.collection('tasks').doc(tasking.id).update(d) : db.collection('tasks').add({...d, done:false, raw:'', createdAt:Date.now()}))
+    .catch(e=>toast('저장 실패: '+e.code));
+  closeTask(); toast('저장했어요');
+}
+function toggleDone(id){
+  const t=tasks.find(x=>x.id===id); if(!t) return;
+  db.collection('tasks').doc(id).update({done:!t.done, doneAt: t.done?null:Date.now()}).catch(e=>toast('저장 실패: '+e.code));
+  toast(t.done?'다시 할 일로 돌렸어요':'완료! 👍');
+}
+$('taskBg').onclick=closeTask; $('tCancel').onclick=closeTask; $('tSave').onclick=saveTask;
+$('tDone').onclick=()=>{ if(tasking){ toggleDone(tasking.id); closeTask(); } };
+$('tDel').onclick=()=>{ if(tasking && confirm('이 할 일을 지울까요?')){ db.collection('tasks').doc(tasking.id).delete(); closeTask(); toast('지웠어요'); } };
+$('tToRec').onclick=()=>{
+  if(!tasking) return; const d=taskData();
+  if(!d.villa){ toast('빌라를 먼저 골라주세요'); return; }
+  if(!d.unit){ toast('호수를 먼저 적어주세요'); $('tUnit').focus(); return; }
+  db.collection('tasks').doc(tasking.id).update({...d, done:true, doneAt:Date.now()});
+  closeTask();
+  location.hash=`#/v/${encodeURIComponent(d.villa)}/${encodeURIComponent(d.unit)}`;
+  setTimeout(()=>{ openSheet(); $('fItem').value=d.text.replace(/\s*(수리\s*)?(필요|해야함|해야|예정|요청|점검)\s*$/,'').trim(); delete $('fItem').dataset.choice; fillPrice(); setTimeout(()=>$('fCharge').focus(),300); },60);
+};
+
+/* ===== 거래 내역 (카뱅처럼 날짜별) ===== */
+let histMonth=ymd(new Date()).slice(0,7);
+function histItems(){
+  const out=[];
+  purchases.filter(p=>p.qty>0).forEach(p=>out.push({date:p.date, t:p.createdAt, amt:-(p.total ?? (p.unitPrice||0)*p.qty),
+    name:`${p.vendor||''} ${p.item||''}`.trim(), sub:`${p.qty}개 × ${won(p.unitPrice)}`, tag:'구매', ref:['buy',p.id]}));
+  ledger.filter(r=>!r.part && Number(r.cost)>0).forEach(r=>out.push({date:r.date, t:r.createdAt, amt:-Number(r.cost),
+    name:`${r.villa||''} ${r.unit?unitKey(r.unit)+'호':''} ${r.item||''}`.trim(), sub:'수리하면서 산 것', tag:'현장구매', ref:['rec',r.id]}));
+  payments.forEach(p=>out.push({date:p.date, t:p.createdAt, amt:+(p.amount||0),
+    name:p.name||'입금', sub:(p.recIds||[]).map(id=>{const r=ledger.find(x=>x.id===id); return r?`${r.villa} ${unitKey(r.unit)}호`:'';}).filter(Boolean).join(', ') || (p.status==='확인필요'?'어느 건인지 확인필요':''),
+    tag:'입금', ref:['pay',p.id]}));
+  ledger.filter(r=>r.paid && !r.paymentId && Number(r.charge)>0).forEach(r=>out.push({date:r.paidDate||r.date, t:r.createdAt, amt:+Number(r.charge),
+    name:`${r.villa||''} ${r.unit?unitKey(r.unit)+'호':''} ${r.item||''}`.trim(), sub:r.payer||'', tag:'입금(직접체크)', ref:['rec',r.id]}));
+  return out;
+}
+function renderHist(){
+  const all=histItems(), items=all.filter(x=>(x.date||'').startsWith(histMonth))
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.t||0)-(a.t||0));
+  const inn=items.filter(x=>x.amt>0).reduce((a,x)=>a+x.amt,0), out=items.filter(x=>x.amt<0).reduce((a,x)=>a-x.amt,0);
+  const [y,m]=histMonth.split('-').map(Number);
+  $('count').textContent='거래 내역';
+  const hm=t=>{ if(!t) return ''; const d=new Date(t); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+  let html=`<div class="month"><button id="mPrev" aria-label="이전 달">‹</button><b>${y}년 ${m}월</b><button id="mNext" aria-label="다음 달">›</button></div>
+    <div class="sum num"><div><small>들어온 돈</small><strong style="color:#2563c9">${won(inn)}</strong></div>
+      <div><small>나간 돈</small><strong>${won(out)}</strong></div>
+      <div><small>남은 돈</small><strong style="color:var(--teal)">${won(inn-out)}</strong></div></div>`;
+  let day='';
+  items.forEach(x=>{
+    if(x.date!==day){ day=x.date; html+=`<div class="day">${esc((day||'').slice(5).replace('-','.'))}</div>`; }
+    html+=`<div class="tx" data-ref="${x.ref[0]}:${x.ref[1]}"><div class="nm"><b>${esc(x.name)}</b><small>${hm(x.t)}<i>#${esc(x.tag)}</i>${x.sub?' · '+esc(x.sub):''}</small></div>
+      <div class="amt${x.amt>0?' in':''}">${x.amt>0?'+':'-'}${won(Math.abs(x.amt))}원</div></div>`;
+  });
+  if(!items.length) html+='<div class="empty">이 달에는 거래가 없어요.</div>';
+  $('main').innerHTML=html;
 }
 
 /* ===== 입금 ===== */
@@ -608,7 +768,7 @@ $('buyBg').onclick=closeBuy; $('bCancel').onclick=closeBuy; $('bSave').onclick=s
 /* ===== 이벤트 ===== */
 let tt;function toast(m){const e=$('toast');e.textContent=m;e.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>e.classList.remove('show'),1800)}
 document.querySelector('.tabs').addEventListener('click',e=>{
-  const t=e.target.dataset.tab; if(!t) return;
+  const b=e.target.closest('[data-tab]'); if(!b) return; const t=b.dataset.tab;
   tab=t; document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   $('q').value=''; $('q').placeholder=t==='villa'?'빌라 이름이나 번지로 찾기':'업체 이름으로 찾기';
   renderChips(); if(location.hash && location.hash!=='#/') location.hash='#/'; else route(); scrollTo(0,0);
@@ -620,6 +780,12 @@ $('main').addEventListener('click',e=>{
   if(cp){ e.stopPropagation(); const a=cp.dataset.copy;
     (navigator.clipboard?.writeText(a)||Promise.reject()).then(()=>toast('주소 복사했어요'),()=>prompt('복사해서 쓰세요',a)); return; }
   if(e.target.closest('a')) return;
+  const ck=e.target.closest('[data-check]'); if(ck){ toggleDone(ck.dataset.check); return; }
+  const tk=e.target.closest('[data-task]'); if(tk){ openTask(tasks.find(x=>x.id===tk.dataset.task)); return; }
+  if(e.target.id==='addTask'){ const c=curVilla(); openTask(null,{villa:c.villa||'', unit:c.unit||''}); return; }
+  if(e.target.id==='mPrev'||e.target.id==='mNext'){ const [y,m]=histMonth.split('-').map(Number); const d=new Date(y, m-1+(e.target.id==='mNext'?1:-1), 1); histMonth=ymd(d).slice(0,7); renderHist(); return; }
+  const rf=e.target.closest('[data-ref]'); if(rf){ const [k,id]=rf.dataset.ref.split(':');
+    if(k==='buy') openBuy(purchases.find(x=>x.id===id)); else if(k==='pay') openPay(payments.find(x=>x.id===id)); else openSheet(ledger.find(x=>x.id===id)); return; }
   const py=e.target.closest('[data-pay]'); if(py){ openPay(payments.find(x=>x.id===py.dataset.pay)); return; }
   if(e.target.id==='editOwner'){
     const v=curVilla().villa, cur=ownerOf(v);
@@ -649,6 +815,7 @@ $('main').addEventListener('click',e=>{
 $('fab').onclick=()=>{
   const p=decodeURIComponent(location.hash.replace(/^#\/?/,'')).split('/');
   if(!p[0] && tab==='pay') { openPay(); return; }
+  if(!p[0] && tab==='todo') { openTask(); return; }
   if(p[0]==='vendor') openBuy(null,{vendor:p[1], item:p[2]?(stock[ikey(p[2])]?.name||p[2]):''}); else openSheet();
 };
 $('sheetBg').onclick=closeSheet; $('sCancel').onclick=closeSheet; $('sSave').onclick=saveSheet; $('sDel').onclick=delRecord;

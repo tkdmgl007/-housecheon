@@ -160,6 +160,7 @@ label input,label select{display:block;width:100%;margin-top:4px;padding:10px;bo
 <script src="/villas.js"></script>
 <script src="/stock.js"></script>
 <script src="/pay.js"></script>
+<script src="/tasks.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
@@ -286,7 +287,19 @@ function analyze(raw){
     const cands=entries.filter(r=>vs.includes(r.villa) && !r.paid && Number(r.charge)>0 && (r.target||'건물주')==='건물주');
     return {type:'pay', pay, villas:vs, recs:matchPayment(pay.amount, cands)};
   }
-  if(!isVilla && looksLikePurchase(raw) && !/청구/.test(raw)) return {type:'buy', b:parsePurchase(raw, ymd)};
+  // 돈 얘기 없이 "필요/예정/점검…" 이거나 빌라만 있으면 → 할 일
+  if(!hasMoney(raw) && (TASK_RE.test(raw) || isVilla)){
+    const w=parseWhen(raw), q=parseLine(w.rest);
+    let text=' '+w.rest+' ';
+    if(villas.includes(q.villa)){
+      const al=[q.villa, ...VILLA_ALIASES.filter(([x,n])=>n===q.villa).map(x=>x[0])].sort((x,y)=>y.length-x.length).find(x=>text.includes(x));
+      if(al) text=text.replace(al,' ');
+    }
+    if(q.unit) text=text.replace(new RegExp('\\s'+q.unit+'\\s*호?(?=\\s)'),' ');
+    text=text.replace(/\s+/g,' ').trim();
+    return {type:'task', t:{villa: villas.includes(q.villa)?q.villa:'', unit:q.unit||'', text, date:w.date, time:w.time}};
+  }
+  if(!isVilla && looksLikePurchase(raw) && hasMoney(raw) && !/청구/.test(raw)) return {type:'buy', b:parsePurchase(raw, ymd)};
   const stock = buildStock(purchases, entries);
   const fv = findVendor(raw);
   if(fv){ p.vendor=fv.vendor; p.item=p.item.replace(fv.alias,' ').replace(/\s+/g,' ').trim(); }
@@ -310,7 +323,7 @@ function analyze(raw){
 function saveMemo(){
   const lines = $('memo').value.split('\n').map(s=>s.trim()).filter(Boolean);
   if(!lines.length){ toast('메모를 먼저 적어주세요'); $('memo').focus(); return; }
-  let nb=0, nf=0, np=0;
+  let nb=0, nf=0, np=0, nt=0;
   lines.forEach((raw,i)=>{
     const a = analyze(raw);
     if(a.type==='pay'){ np++;
@@ -320,6 +333,10 @@ function saveMemo(){
       b.commit().catch(e=>toast('저장 실패: '+e.message));
       return;
     }
+    if(a.type==='task'){ nt++;
+      db.collection('tasks').add({...a.t, done:false, raw, createdAt: Date.now()+i}).catch(e=>toast('저장 실패: '+e.message));
+      return;
+    }
     if(a.type==='buy'){ nb++;
       db.collection('purchases').add({...a.b, memo:'', raw, createdAt: Date.now()+i}).catch(e=>toast('저장 실패: '+e.message));
     } else { nf++;
@@ -327,7 +344,7 @@ function saveMemo(){
     }
   });
   $('memo').value=''; localStorage.removeItem('memo-draft'); partChoice={}; renderPreview();
-  const msg=[nf?`수리 ${nf}건`:'', nb?`구매 ${nb}건`:'', np?`입금 ${np}건`:''].filter(Boolean).join(', ');
+  const msg=[nf?`수리 ${nf}건`:'', nb?`구매 ${nb}건`:'', np?`입금 ${np}건`:'', nt?`할 일 ${nt}건`:''].filter(Boolean).join(', ');
   toast(navigator.onLine ? `${msg} 적었어요` : `${msg} 폰에 저장, 연결되면 올라가요`);
 }
 let purchases=[], owners={}, partChoice={};   // partChoice: 줄 → 고른 재고 품목
@@ -358,6 +375,8 @@ function renderPreview(){
       a.ask.cands.map(c=>`<button data-line="${esc(l)}" data-part="${esc(c)}" class="${a.ask.chosen===c?'on':''}">${esc(c)}</button>`).join('')+
       `<button data-line="${esc(l)}" data-part="" class="no${a.ask.chosen===''?' on':''}">재고 안 씀</button></div>` : '';
     const guessHtml = a.guessed ? ` <span style="color:var(--teal)">(→ ${esc(a.guessed)}로 인식)</span>` : '';
+    if(a.type==='task'){ const k=a.t;
+      return `<div class="pv">📋 할 일 ${k.villa?`<b>${esc(k.villa)}</b>`:''} ${k.unit?`<b>${esc(k.unit)}호</b>`:''} ${esc(k.text)}${(k.date||k.time)?` · <b>${esc(whenLabel(k.date,k.time))}</b>`:''}</div>`; }
     if(a.type==='pay'){ const y=a.pay;
       return `<div class="pv">💰 입금 <b>${esc(y.name)||'이름?'}</b> <b class="num">${won(y.amount)}</b> · `+
         (a.recs.length ? `${a.recs.map(r=>`${esc(r.villa)} ${esc(r.unit)}호`).join(', ')} <b>입금처리</b>`
