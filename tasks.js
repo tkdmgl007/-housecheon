@@ -45,5 +45,26 @@ const whenLabel=(date,time)=>{
   if(time){ const h=+time.slice(0,2), mi=time.slice(3); d+=(d?' ':'')+(h<12?'오전 ':'오후 ')+((h%12)||12)+'시'+(mi!=='00'?' '+mi+'분':''); }
   return d;
 };
+/* 공용 부분: "1층 현관", "2층 201호 앞 복도", "옥상" → {place, rest} */
+const COMMON_RE=/(\d+\s*층\s*)?(\d+\s*호\s*앞|현관|옥상|계단|복도|주차장|외벽|엘리베이터|엘베|보일러실|물탱크|창고|입구|화단|담장|대문|공용부|공용|공동)(\s*(앞|위|옆|쪽))?(?![가-힣]*문)/g;
+function detectCommon(text, unit){
+  const t=' '+String(text||'')+' ';
+  const hoAp=/\d+\s*호\s*앞/.test(t);
+  if(unit && !hoAp) return null;                       // 302호 현관문 → 그 집 일
+  const ms=[...t.matchAll(COMMON_RE)]; if(!ms.length) return null;
+  let rest=t; const places=[];
+  ms.forEach(m=>{ rest=rest.replace(m[0],' '); const pl=m[0].replace(/공용부|공용|공동/,'').replace(/\s+/g,' ').trim(); if(pl) places.push(pl); });
+  return {place:places.join(' '), rest:rest.replace(/\s+/g,' ').trim()};
+}
+/* 돈 받을 곳: 사장님 / 세입자 / 무상 (없으면 건물주) */
+function payerOf(text){
+  const t=String(text||'');
+  if(/무상|무료|공짜|서비스로|서비스/.test(t)) return '무상';
+  if(/사장님|사장/.test(t)) return '사장님';
+  if(/세입자|임차인|세입/.test(t)) return '세입자';
+  return '';
+}
+const unitLabel=u=>{ u=String(u||'').replace(/호$/,''); return !u?'':(u==='공용'?'공용':u+'호'); };
+Object.assign(window,{detectCommon, payerOf, unitLabel});
 Object.assign(window,{parseWhen, TASK_RE, hasMoney, whenLabel});
 })();

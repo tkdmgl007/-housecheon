@@ -38,6 +38,29 @@ textarea::placeholder{color:#9bb3ad}
 .save{display:block;width:100%;margin-top:10px;padding:15px;border:0;border-radius:12px;
   background:var(--teal);color:#fff;font:inherit;font-size:16px;font-weight:700}
 .save:active{opacity:.85}
+.vrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.vrow .save{margin-top:0}
+.mic{padding:15px;border:0;border-radius:12px;background:#e0a43a;color:#3a2600;font:inherit;font-size:17px;font-weight:800}
+.mic.on{background:#b42318;color:#fff;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.75}}
+@media (prefers-reduced-motion:reduce){.mic.on{animation:none}}
+.aibar{margin-top:10px;font-size:13px;color:var(--soft);line-height:1.6}
+.aibar:empty{display:none}
+.aibar b{color:var(--teal)}
+.aibar button{margin-left:6px;padding:4px 10px;border-radius:12px;border:1px solid var(--teal);background:#fff;color:var(--teal);font:inherit;font-size:12px;font-weight:700}
+.qitem{display:flex;gap:8px;align-items:flex-start;background:#fff;border:1px dashed #e0a43a;border-radius:10px;padding:8px 10px;margin-top:6px;font-size:13px;color:var(--ink)}
+.qitem span{flex:1}
+.qitem button{border:0;background:none;color:var(--soft);font-size:16px;padding:0 4px}
+#done:empty{display:none}
+.done{margin-top:12px;background:#fff;border:1px solid var(--teal);border-radius:12px;overflow:hidden}
+.done h3{font-size:14px;background:var(--teal);color:#fff;padding:9px 12px;display:flex;justify-content:space-between;align-items:center}
+.done h3 button{border:0;background:none;color:#fff;font:inherit;font-size:13px}
+.drow{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-top:1px solid var(--rule);font-size:14px}
+.drow:first-of-type{border-top:0}
+.drow span{flex:1;line-height:1.5}
+.drow small{display:block;color:var(--red);font-size:12px}
+.drow button{flex:none;padding:4px 9px;border-radius:10px;border:1px solid var(--rule);background:#fff;color:var(--soft);font:inherit;font-size:12px}
+.drow.gone{opacity:.4;text-decoration:line-through}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #e0a43a;outline-offset:2px}
 
 #preview{margin-top:10px;display:grid;gap:6px}
@@ -113,7 +136,12 @@ label input,label select{display:block;width:100%;margin-top:4px;padding:10px;bo
     <textarea id="memo" placeholder="인하우스 102호 폽업 8천 사서 수리, 3만 청구&#10;한 줄에 한 건씩 적으세요"></textarea>
     <div class="chips" id="chips"></div>
   </div>
-  <button class="save" id="saveBtn">장부에 적기</button>
+  <div class="vrow">
+    <button class="mic" id="micBtn">🎤 말하기</button>
+    <button class="save" id="saveBtn">장부에 적기</button>
+  </div>
+  <div class="aibar" id="aiBar"></div>
+  <div id="done"></div>
   <div id="preview"></div>
 
   <div class="sum" id="sum"></div>
@@ -281,25 +309,36 @@ function analyze(raw){
   const p = parseLine(raw);
   const isVilla = villas.includes(p.villa);
   const ownerNames=[...new Set(Object.values(owners).map(o=>o.owner).filter(Boolean))];
-  if(!isVilla && looksLikePayment(raw, ownerNames)){
+  if(!isVilla && (looksLikePayment(raw, ownerNames) || (/사장/.test(raw) && /입금|들어/.test(raw)))){
     const pay=parsePayment(raw, ymd);
-    const vs=VILLA_LIST.filter(v=>owners[v.name]?.owner && owners[v.name].owner===pay.name).map(v=>v.name);
-    const cands=entries.filter(r=>vs.includes(r.villa) && !r.paid && Number(r.charge)>0 && (r.target||'건물주')==='건물주');
+    const boss=owners['__boss']?.owner;
+    const isBoss=(boss && pay.name===boss) || /사장/.test(pay.name);
+    const vs=isBoss ? [] : VILLA_LIST.filter(v=>owners[v.name]?.owner && owners[v.name].owner===pay.name).map(v=>v.name);
+    const cands=entries.filter(r=>!r.paid && Number(r.charge)>0 && (isBoss ? r.target==='사장님' : (vs.includes(r.villa) && (r.target||'건물주')==='건물주')));
+    if(isBoss){ if(boss) pay.name=boss; return {type:'pay', pay, villas:['사장님'], recs:matchPayment(pay.amount, cands)}; }
     return {type:'pay', pay, villas:vs, recs:matchPayment(pay.amount, cands)};
   }
   // 돈 얘기 없이 "필요/예정/점검…" 이거나 빌라만 있으면 → 할 일
-  if(!hasMoney(raw) && (TASK_RE.test(raw) || isVilla)){
+  if(!hasMoney(raw) && (TASK_RE.test(raw) || (isVilla && payerOf(raw)!=='무상'))){
     const w=parseWhen(raw), q=parseLine(w.rest);
-    let text=' '+w.rest+' ';
+    const cm=detectCommon(w.rest, q.unit);
+    let text=' '+(cm?cm.rest:w.rest)+' ';
     if(villas.includes(q.villa)){
       const al=[q.villa, ...VILLA_ALIASES.filter(([x,n])=>n===q.villa).map(x=>x[0])].sort((x,y)=>y.length-x.length).find(x=>text.includes(x));
       if(al) text=text.replace(al,' ');
     }
-    if(q.unit) text=text.replace(new RegExp('\\s'+q.unit+'\\s*호?(?=\\s)'),' ');
+    if(q.unit && !cm) text=text.replace(new RegExp('\\s'+q.unit+'\\s*호?(?=\\s)'),' ');
     text=text.replace(/\s+/g,' ').trim();
-    return {type:'task', t:{villa: villas.includes(q.villa)?q.villa:'', unit:q.unit||'', text, date:w.date, time:w.time}};
+    let unit=q.unit||'', place='';
+    if(cm){ unit='공용'; place=cm.place; text=text.replace(/^앞\s*/,'').trim(); }
+    return {type:'task', t:{villa: villas.includes(q.villa)?q.villa:'', unit, place, text, date:w.date, time:w.time}};
   }
-  if(!isVilla && looksLikePurchase(raw) && hasMoney(raw) && !/청구/.test(raw)) return {type:'buy', b:parsePurchase(raw, ymd)};
+  if(!isVilla && looksLikePurchase(raw) && (hasMoney(raw) || /기존/.test(raw)) && !/청구/.test(raw)) return {type:'buy', b:parsePurchase(raw, ymd)};
+  const cm = detectCommon(raw, p.unit);
+  if(cm){ p.unit='공용'; p.place=cm.place; p.item=(detectCommon(p.item,'')?.rest||p.item).replace(/^앞\s*/,'').trim(); }
+  const payer = payerOf(raw);
+  if(payer){ p.target=payer; p.item=p.item.replace(/(사장님이|사장님|사장이|사장|무상으로|무상|무료로|무료|공짜|서비스로|서비스|세입자|임차인)/g,' ').replace(/\s+/g,' ').trim(); }
+  if(payer==='무상'){ p.charge=null; p.margin=0; }
   const stock = buildStock(purchases, entries);
   const fv = findVendor(raw);
   if(fv){ p.vendor=fv.vendor; p.item=p.item.replace(fv.alias,' ').replace(/\s+/g,' ').trim(); }
@@ -315,12 +354,23 @@ function analyze(raw){
     const e=stock[ikey(part)]; let need=p.partQty, est=0;
     for(const l of e.lots){ if(need<=0) break; const t=Math.min(l.left,need); est+=t*l.price; need-=t; }
     if(p.cost==null) p.margin=(p.charge??0)-est;   // 원가는 저장 안 하고 재고에서 계산
+
     info={part, left:e.left, qty:p.partQty, est};
   }
   delete p.qty;
+  p.needsCheck = !villas.includes(p.villa) || !p.unit || (p.target!=='무상' && p.charge==null) || !!(ask && chosen===undefined);
   return {type:'fix', p, info, ask, guessed: cands.length===1 && !ikey(p.item).includes(ikey(cands[0])) ? cands[0] : ''};
 }
 function saveMemo(){
+  if(aiOn()){
+    const text=$('memo').value.trim();
+    if(!text){ toast('말하거나 적어주세요'); return; }
+    const q=getQ(); q.push({id:'q'+Date.now(), text, day:ymd(new Date()), ts:Date.now()}); setQ(q);
+    $('memo').value=''; localStorage.removeItem('memo-draft'); renderPreview();
+    if(navigator.onLine){ toast('AI가 정리하는 중…'); processQueue(); }
+    else toast('폰에 저장했어요. 연결되면 AI가 정리해서 올려요');
+    return;
+  }
   const lines = $('memo').value.split('\n').map(s=>s.trim()).filter(Boolean);
   if(!lines.length){ toast('메모를 먼저 적어주세요'); $('memo').focus(); return; }
   let nb=0, nf=0, np=0, nt=0;
@@ -338,7 +388,7 @@ function saveMemo(){
       return;
     }
     if(a.type==='buy'){ nb++;
-      db.collection('purchases').add({...a.b, memo:'', raw, createdAt: Date.now()+i}).catch(e=>toast('저장 실패: '+e.message));
+      db.collection('purchases').add({...a.b, memo:a.b.memo||'', raw, createdAt: Date.now()+i}).catch(e=>toast('저장 실패: '+e.message));
     } else { nf++;
       db.collection(LEDGER).add({...a.p, raw, createdAt: Date.now()+i}).catch(e=>toast('저장 실패: '+e.message));
     }
@@ -368,6 +418,11 @@ function renderChips(){
   $('villaList').innerHTML = villas.map(v=>`<option value="${esc(v)}">`).join('');
 }
 function renderPreview(){
+  if(aiOn()){
+    $('memo').placeholder='🎤 누르고 말하거나 편하게 적으세요\n여러 건 섞어도 AI가 알아서 나눠요';
+    $('preview').innerHTML='';
+    return;
+  }
   const lines = $('memo').value.split('\n').map(s=>s.trim()).filter(Boolean).slice(-10);
   $('preview').innerHTML = lines.map(l=>{
     const a = analyze(l);
@@ -376,16 +431,16 @@ function renderPreview(){
       `<button data-line="${esc(l)}" data-part="" class="no${a.ask.chosen===''?' on':''}">재고 안 씀</button></div>` : '';
     const guessHtml = a.guessed ? ` <span style="color:var(--teal)">(→ ${esc(a.guessed)}로 인식)</span>` : '';
     if(a.type==='task'){ const k=a.t;
-      return `<div class="pv">📋 할 일 ${k.villa?`<b>${esc(k.villa)}</b>`:''} ${k.unit?`<b>${esc(k.unit)}호</b>`:''} ${esc(k.text)}${(k.date||k.time)?` · <b>${esc(whenLabel(k.date,k.time))}</b>`:''}</div>`; }
+      return `<div class="pv">📋 할 일 ${k.villa?`<b>${esc(k.villa)}</b>`:''} ${k.unit?`<b>${esc(unitLabel(k.unit))}</b>`:''}${k.place?` <b>${esc(k.place)}</b>`:''} ${esc(k.text)}${(k.date||k.time)?` · <b>${esc(whenLabel(k.date,k.time))}</b>`:''}</div>`; }
     if(a.type==='pay'){ const y=a.pay;
       return `<div class="pv">💰 입금 <b>${esc(y.name)||'이름?'}</b> <b class="num">${won(y.amount)}</b> · `+
-        (a.recs.length ? `${a.recs.map(r=>`${esc(r.villa)} ${esc(r.unit)}호`).join(', ')} <b>입금처리</b>`
+        (a.recs.length ? `${a.recs.map(r=>`${esc(r.villa)} ${esc(unitLabel(r.unit))}`).join(', ')} <b>입금처리</b>`
           : `<span class="warn">${a.villas.length?'금액 맞는 미수 없음':'등록 안 된 건물주'} → 확인필요로 저장</span>`)+'</div>'; }
     if(a.type==='buy'){ const b=a.b;
       return `<div class="pv">🛒 구매 <b>${esc(b.vendor)}</b> <b>${esc(b.item)||'품목?'}</b> · ${b.qty}개 × <b class="num">${won(b.unitPrice)}</b> = <b class="num">${won(b.total)}</b>
         ${b.item?'':' <span class="warn">품목 확인</span>'}</div>`; }
     const p = a.p;
-    return `<div class="pv">${a.info?`📦 ${esc(a.info.part)} 재고 ${a.info.left}개에서 <b>${a.info.qty}개</b> 사용${a.info.qty>a.info.left?' <span class="warn">(재고 부족)</span>':''} · `:''}${p.villa?`<b>${esc(p.villa)}</b>`:'<span class="warn">빌라?</span>'} ${p.unit?`<b>${esc(p.unit)}호</b>`:''} ${esc(p.item)||''}${guessHtml}
+    return `<div class="pv">${a.info?`📦 ${esc(a.info.part)} 재고 ${a.info.left}개에서 <b>${a.info.qty}개</b> 사용${a.info.qty>a.info.left?' <span class="warn">(재고 부족)</span>':''} · `:''}${p.villa?`<b>${esc(p.villa)}</b>`:'<span class="warn">빌라?</span>'} ${p.unit?`<b>${esc(unitLabel(p.unit))}</b>`:''}${p.place?` <b>${esc(p.place)}</b>`:''} ${esc(p.item)||''}${guessHtml}${p.target&&p.target!=='건물주'?` · <b>${esc(p.target)}</b>`:''}
       · 원가 <b class="num">${won(a.info ? a.info.est : p.cost)}</b> · 청구 <b class="num">${won(p.charge)}</b> · 마진 <b class="num">${won(p.margin)}</b>
       ${p.needsCheck?' <span class="warn">확인필요</span>':''}${pickHtml}</div>`;
   }).join('');
@@ -419,7 +474,7 @@ function renderList(){
   $('list').innerHTML = list.map(e=>`
     <div class="row${e.needsCheck?' chk':''}" data-id="${e.id}">
       <div>
-        <div class="t">${esc(e.villa)||'빌라?'} ${e.unit?esc(e.unit)+'호':''}<span>${esc(e.item)}</span></div>
+        <div class="t">${esc(e.villa)||'빌라?'} ${e.unit?esc(unitLabel(e.unit)):''}${e.place?' '+esc(e.place):''}<span>${esc(e.item)}</span></div>
         <div class="d">${esc(e.date)} · ${esc(e.kind)} · ${esc(e.target)}</div>
       </div>
       <div class="money num">원가 ${won(effCost(st,e))}<br>청구 ${won(e.charge)}<br><b>${won(effMargin(st,e))}</b></div>
@@ -464,6 +519,195 @@ function copyMsg(){
   (navigator.clipboard?.writeText(msg) || Promise.reject()).then(()=>toast('청구문자 복사했어요'),()=>prompt('복사해서 쓰세요',msg));
 }
 
+/* ===================== AI 정리 ===================== */
+const QKEY='ai-queue';
+const getQ=()=>{ try{ return JSON.parse(localStorage.getItem(QKEY)||'[]'); }catch(e){ return []; } };
+const setQ=q=>{ try{ localStorage.setItem(QKEY, JSON.stringify(q)); }catch(e){} renderAiBar(); };
+const aiOn=()=>{ try{ return localStorage.getItem('ai-ready')==='1'; }catch(e){ return false; } };
+let aiBusy=false, aiChecked=false, lastDone=[];
+
+async function checkAI(){
+  if(!navigator.onLine) return;
+  try{
+    const r=await fetch('/api/parse',{cache:'no-store'});
+    if(r.ok){ const j=await r.json(); localStorage.setItem('ai-ready', j.ai?'1':'0'); aiChecked=true; }
+  }catch(e){}
+  renderAiBar(); renderPreview(); processQueue();
+}
+function renderAiBar(){
+  const q=getQ();
+  if(!aiOn()){ $('aiBar').innerHTML = aiChecked ? 'AI 정리가 아직 설정 안 됐어요 (지금은 정해진 말투로만 알아들어요)' : ''; return; }
+  $('aiBar').innerHTML = `🤖 <b>AI 정리 켜짐</b>`+
+    (aiBusy ? ' · 정리하는 중…' : '')+
+    (q.length ? ` · 🕓 대기 <b>${q.length}건</b>${navigator.onLine?'':' (연결되면 자동으로 정리)'}${navigator.onLine&&!aiBusy?'<button id="qNow">지금 올리기</button>':''}` : '')+
+    q.map(it=>`<div class="qitem"><span>${esc(it.text)}</span><button data-q="${it.id}" aria-label="지우기">✕</button></div>`).join('');
+}
+function aiContext(day){
+  const d=new Date(day+'T12:00:00');
+  const st=buildStock(purchases, entries);
+  const by={};
+  Object.entries(owners).forEach(([v,o])=>{ if(v==='__boss'||!o?.owner) return; (by[o.owner]=by[o.owner]||[]).push(v); });
+  return {
+    today:day, weekday:'일월화수목금토'[d.getDay()],
+    villas: VILLA_LIST.map(v=>({name:v.name, dong:v.dong, aliases:VILLA_ALIASES.filter(([a,n])=>n===v.name).map(x=>x[0])})),
+    stock: Object.values(st).map(e=>({name:e.name, left:e.left})),
+    vendors: VENDORS.map(v=>v.name.replace(/\s*\(.*\)/,'')),
+    owners: Object.entries(by).map(([owner,vs])=>({owner, villas:vs})),
+    boss: owners['__boss']?.owner || ''
+  };
+}
+async function callAI(it){
+  const headers={'content-type':'application/json'};
+  const pin=localStorage.getItem('ai-pin'); if(pin) headers['x-app-pin']=pin;
+  let r;
+  try{ r=await fetch('/api/parse',{method:'POST', headers, body:JSON.stringify({text:it.text, context:aiContext(it.day)})}); }
+  catch(e){ return null; }
+  if(r.status===401){
+    const p=prompt('AI 비밀번호(PIN)를 넣어주세요. 한 번만 넣으면 기억해요');
+    if(p){ localStorage.setItem('ai-pin', p.trim()); return callAI(it); }
+    return null;
+  }
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){
+    toast(j.error || 'AI 정리 실패');
+    if(r.status===501){ localStorage.setItem('ai-ready','0'); renderPreview(); }
+    return null;
+  }
+  return j;
+}
+async function processQueue(){
+  if(aiBusy || !navigator.onLine || !aiOn()) return;
+  const q=getQ(); if(!q.length) return;
+  aiBusy=true; renderAiBar();
+  let all=[];
+  try{
+    for(const it of q){
+      const r=await callAI(it); if(!r) break;
+      all=all.concat(saveAI(r.entries||[], it));
+      setQ(getQ().filter(x=>x.id!==it.id));
+    }
+  } finally { aiBusy=false; renderAiBar(); }
+  if(all.length){ lastDone=all; renderDone(); toast(`${all.length}건 정리해서 적었어요`); }
+}
+
+/* AI 결과 → 하우스천에 저장 (구매 먼저 → 입금 → 수리 → 할 일) */
+function saveAI(list, it){
+  const now=Date.now(), raw=it.text, done=[];
+  const venNames=VENDORS.map(v=>v.name.replace(/\s*\(.*\)/,''));
+  const fixVilla=v=>{ v=String(v||'').trim(); if(villas.includes(v)) return v; const a=VILLA_ALIASES.find(([x])=>x===v); return a?a[1]:''; };
+  const order={purchase:0, payment:1, repair:2, task:3};
+  list=list.slice().sort((a,b)=>(order[a.type]??9)-(order[b.type]??9));
+  const newPur=[];
+  list.forEach((e,i)=>{
+    const ts=now+i, date=e.date||it.day;
+    if(e.type==='purchase'){
+      const item=String(e.item||'').trim(); if(!item) return;
+      const qty=Math.max(1, parseInt(e.qty)||1), up=e.unitPrice==null?null:Math.round(e.unitPrice);
+      const vendor=venNames.includes(e.vendor)?e.vendor:(/쿠팡/.test(e.vendor||'')?'인터넷':'기타');
+      const doc={date, vendor, item, qty, unitPrice:up, total:up==null?null:up*qty, memo:e.memo||'', raw, createdAt:ts, by:'ai'};
+      const ref=db.collection('purchases').doc(); ref.set(doc).catch(er=>toast('저장 실패: '+er.message));
+      newPur.push({id:ref.id, ...doc});
+      done.push({col:'purchases', id:ref.id, label:`🛒 ${vendor} ${item} ${qty}개 × ${won(up)}`+(doc.memo?' (기존재고)':'')});
+    }
+    else if(e.type==='payment'){
+      const name=String(e.name||'').trim(), amount=e.amount==null?null:Math.round(e.amount);
+      if(!amount) return;
+      const boss=owners['__boss']?.owner;
+      const isBoss=(boss && name===boss) || /사장/.test(name);
+      const ev=fixVilla(e.villa);
+      const vs=isBoss?[]:(ev?[ev]:VILLA_LIST.filter(v=>owners[v.name]?.owner===name).map(v=>v.name));
+      const cands=entries.filter(r=>!r.paid && Number(r.charge)>0 && (isBoss ? r.target==='사장님' : (vs.includes(r.villa) && (r.target||'건물주')==='건물주')));
+      const recs=matchPayment(amount, cands), ids=recs.map(r=>r.id);
+      const b=db.batch(), ref=db.collection('payments').doc();
+      ids.forEach(id=>b.update(db.collection(LEDGER).doc(id),{paid:true, paidDate:date, payer:name, paymentId:ref.id}));
+      b.set(ref,{date, name:isBoss&&boss?boss:name, amount, villas:isBoss?['사장님']:vs, recIds:ids, status:ids.length?'완료':'확인필요', raw, createdAt:ts, by:'ai'});
+      b.commit().catch(er=>toast('저장 실패: '+er.message));
+      done.push({col:'payments', id:ref.id, recIds:ids,
+        label:`💰 ${name||'이름?'} ${won(amount)}원 → `+(ids.length?recs.map(r=>`${r.villa} ${unitLabel(r.unit)}`).join(', ')+' 입금처리':'어느 건인지 확인필요'),
+        warn: ids.length?'':(vs.length||isBoss?'금액 맞는 미수가 없어요':'등록 안 된 이름이에요')});
+    }
+    else if(e.type==='repair'){
+      const villa=fixVilla(e.villa), unit=String(e.unit||'').replace(/호$/,'').trim();
+      const target=['건물주','사장님','세입자','무상'].includes(e.target)?e.target:'건물주';
+      const charge=target==='무상'?null:(e.charge==null?null:Math.round(e.charge));
+      const names=[...Object.values(buildStock(purchases, entries)).map(x=>x.name), ...newPur.map(x=>x.item)];
+      const part=names.find(n=>ikey(n)===ikey(e.part||'')) || '';
+      const partQty=part?Math.max(1, parseInt(e.qty)||1):0;
+      let est=0;
+      if(part){
+        const st=buildStock([...purchases, ...newPur], entries), pe=st[ikey(part)]; let need=partQty;
+        if(pe) for(const l of pe.lots){ if(need<=0) break; const t=Math.min(l.left,need); est+=t*l.price; need-=t; }
+      }
+      const kind=['수리','교체','설치','이사정산','기타'].includes(e.kind)?e.kind:'수리';
+      const needsCheck=!!e.unsure || !villa || !unit || (target!=='무상' && charge==null);
+      const doc={date, villa, unit, place:e.place||'', item:String(e.item||'').trim(), kind, charge, cost:null,
+        margin:(charge??0)-est, target, paid:!!e.paid, paidDate:e.paid?date:'', needsCheck, part, partQty,
+        memo:e.unsure?(e.unsureReason||''):'', raw, createdAt:ts, by:'ai'};
+      const ref=db.collection(LEDGER).doc(); ref.set(doc).catch(er=>toast('저장 실패: '+er.message));
+      done.push({col:LEDGER, id:ref.id,
+        label:`🔧 ${villa||'빌라?'} ${unitLabel(unit)||'호수?'}${doc.place?' '+doc.place:''} ${doc.item} · 청구 ${won(charge)}`+
+          (target!=='건물주'?` · ${target}`:'')+(doc.paid?' · 입금완료':'')+(part?` · 📦${part} ${partQty}개`:''),
+        warn: needsCheck ? (e.unsureReason || (!villa?'빌라를 못 알아들었어요':!unit?'호수를 못 알아들었어요':'금액을 못 알아들었어요')) : ''});
+    }
+    else if(e.type==='task'){
+      const villa=fixVilla(e.villa), unit=String(e.unit||'').replace(/호$/,'').trim();
+      const doc={villa, unit, place:e.place||'', text:String(e.text||e.item||'').trim(), date:e.date||'', time:e.time||'', done:false, raw, createdAt:ts, by:'ai'};
+      if(!doc.text) return;
+      const ref=db.collection('tasks').doc(); ref.set(doc).catch(er=>toast('저장 실패: '+er.message));
+      done.push({col:'tasks', id:ref.id,
+        label:`📋 할 일 ${villa} ${unitLabel(unit)}${doc.place?' '+doc.place:''} ${doc.text}${(doc.date||doc.time)?' · '+whenLabel(doc.date,doc.time):''}`.replace(/\s+/g,' '),
+        warn: e.unsure?(e.unsureReason||''):''});
+    }
+  });
+  if(!done.length) done.push({col:'', id:'', label:'적을 만한 내용을 못 찾았어요: '+raw, warn:'다시 말해주세요'});
+  return done;
+}
+function renderDone(){
+  if(!lastDone.length){ $('done').innerHTML=''; return; }
+  $('done').innerHTML=`<div class="done"><h3>🤖 방금 정리해서 적은 것 <button id="doneClose">닫기</button></h3>`+
+    lastDone.map((d,i)=>`<div class="drow${d.gone?' gone':''}"><span>${esc(d.label)}${d.warn?`<small>⚠ ${esc(d.warn)}</small>`:''}</span>`+
+      (d.col&&!d.gone?`<button data-undo="${i}">취소</button>`:'')+`</div>`).join('')+`</div>`;
+}
+function undoOne(i){
+  const d=lastDone[i]; if(!d||!d.col||d.gone) return;
+  const b=db.batch();
+  (d.recIds||[]).forEach(id=>b.update(db.collection(LEDGER).doc(id),{paid:false, paidDate:'', payer:'', paymentId:''}));
+  b.delete(db.collection(d.col).doc(d.id));
+  b.commit().catch(er=>toast('취소 실패: '+er.message));
+  d.gone=true; renderDone(); toast('취소했어요');
+}
+
+/* ===================== 🎤 음성 ===================== */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null, listening=false;
+function micUI(){ $('micBtn').classList.toggle('on',listening); $('micBtn').textContent=listening?'⏹ 다 말했어요':'🎤 말하기'; }
+function startMic(){
+  if(!SR){ toast('이 브라우저는 음성 버튼이 안 돼요. 키보드 🎤를 써주세요'); $('memo').focus(); return; }
+  if(!navigator.onLine){ toast('데이터 없을 땐 키보드 🎤로 말해주세요. 연결되면 AI가 정리해요'); $('memo').focus(); return; }
+  let base=$('memo').value; if(base && !/\n$/.test(base)) base+='\n';
+  let finals='';
+  rec=new SR(); rec.lang='ko-KR'; rec.continuous=true; rec.interimResults=true;
+  rec.onresult=ev=>{
+    let interim='';
+    for(let k=ev.resultIndex;k<ev.results.length;k++){ const r=ev.results[k]; if(r.isFinal) finals+=r[0].transcript+' '; else interim+=r[0].transcript; }
+    $('memo').value=base+finals+interim;
+  };
+  rec.onerror=ev=>{
+    if(ev.error==='not-allowed'||ev.error==='service-not-allowed'){ listening=false; toast('마이크 권한을 허용해주세요'); }
+    else if(ev.error==='network'){ listening=false; toast('음성 인식에 인터넷이 필요해요. 키보드 🎤를 써주세요'); }
+  };
+  rec.onend=()=>{
+    if(listening){ base=$('memo').value; if(base && !/\s$/.test(base)) base+=' '; finals=''; try{ rec.start(); }catch(e){ listening=false; micUI(); } return; }
+    micUI();
+    const t=$('memo').value.trim();
+    localStorage.setItem('memo-draft',$('memo').value);
+    if(t && aiOn()) saveMemo(); else renderPreview();
+  };
+  listening=true; micUI();
+  try{ rec.start(); }catch(e){ listening=false; micUI(); }
+}
+function stopMic(){ listening=false; try{ rec&&rec.stop(); }catch(e){} micUI(); }
+
 let tt; function toast(m){ const el=$('toast'); el.textContent=m; el.classList.add('show'); clearTimeout(tt); tt=setTimeout(()=>el.classList.remove('show'),2200); }
 
 /* ===== 이벤트 ===== */
@@ -489,9 +733,21 @@ $('list').onclick = e=>{ const r=e.target.closest('.row'); if(r) openEdit(r.data
 $('sheetBg').onclick = closeEdit;
 $('eSave').onclick = saveEdit; $('eDel').onclick = delEdit; $('eMsg').onclick = copyMsg;
 $('eCost').oninput = updMargin; $('eCharge').oninput = updMargin;
-addEventListener('online', ()=>{ renderNet(); toast('연결됐어요. 대기중인 메모 올리는 중'); });
+addEventListener('online', ()=>{ renderNet(); renderAiBar(); toast('연결됐어요. 대기중인 메모 올리는 중'); checkAI(); });
+addEventListener('offline', renderAiBar);
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') processQueue(); });
+setInterval(processQueue, 60000);
+$('micBtn').onclick = ()=> listening ? stopMic() : startMic();
+$('aiBar').addEventListener('click',e=>{
+  if(e.target.id==='qNow'){ processQueue(); return; }
+  const x=e.target.closest('[data-q]'); if(x && confirm('이 메모를 지울까요?')) setQ(getQ().filter(it=>it.id!==x.dataset.q));
+});
+$('done').addEventListener('click',e=>{
+  if(e.target.id==='doneClose'){ lastDone=[]; renderDone(); return; }
+  const u=e.target.closest('[data-undo]'); if(u) undoOne(+u.dataset.undo);
+});
 addEventListener('offline', renderNet);
-renderChips(); renderPreview(); renderNet();
+renderChips(); renderPreview(); renderNet(); renderAiBar(); checkAI();
 
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('/sw.js').catch(e=>console.warn('sw',e));

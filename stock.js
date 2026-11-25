@@ -3,11 +3,15 @@
 const VA = [['전진철물점','전진철물점'],['전진철물','전진철물점'],['전진','전진철물점'],
   ['장땡타일','장땡타일'],['장원산업','장땡타일'],['장땡','장땡타일'],
   ['라온조명','라온조명'],['라온전기','라온조명'],['라온','라온조명'],
-  ['쿠팡','인터넷'],['인터넷','인터넷']].sort((a,b)=>b[0].length-a[0].length);
+  ['쿠팡','인터넷'],['인터넷','인터넷'],['기존재고','기존재고'],['기존','기존재고']].sort((a,b)=>b[0].length-a[0].length);
 const ikey = s => String(s||'').replace(/\s/g,'').toLowerCase();
 const asc = (a,b)=>(a.date||'').localeCompare(b.date||'')||(a.createdAt||0)-(b.createdAt||0);
 
-function findVendor(text){ for(const [a,v] of VA) if(String(text).includes(a)) return {alias:a, vendor:v}; return null; }
+function findVendor(text){
+  const t=String(text); let old=null;
+  for(const [a,v] of VA){ if(!t.includes(a)) continue; if(v==='기존재고'){ old=old||{alias:a,vendor:v}; continue; } return {alias:a, vendor:v}; }
+  return old;
+}
 
 /* "알전구" → [led 알전구, 일반 알전구] 처럼 비슷한 재고 후보 전부 */
 function findParts(text, names){
@@ -87,7 +91,8 @@ function parsePurchase(line, ymd){
   else if(/오늘/.test(t)){ t=t.replace(/오늘/,' '); }
   const dm=t.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/)||t.match(/(?<![\d.])(\d{1,2})\/(\d{1,2})(?![\d])/);
   if(dm){ d=new Date(now.getFullYear(),+dm[1]-1,+dm[2]); t=t.replace(dm[0],' '); }
-  const fv=findVendor(t); const vendor=fv?fv.vendor:'기타'; if(fv) t=t.replace(fv.alias,' ');
+  const isOld=/기존/.test(t); t=t.replace(/기존\s*재고|기존/,' ');
+  const fv=findVendor(t); const vendor=fv?fv.vendor:(isOld?'기존재고':'기타'); if(fv) t=t.replace(fv.alias,' ');
   let qty=1; const qm=t.match(/(\d+)\s*(개|ea|EA|장|롤|박스|통|세트|미터)/);
   if(qm){ qty=+qm[1]; t=t.replace(qm[0],' '); }
   let n=null; const am=t.match(/(\d[\d,]*(?:\.\d+)?)\s*(?:(만)\s*(?:(\d+)\s*천)?|(천))?\s*(원)?/);
@@ -99,9 +104,9 @@ function parsePurchase(line, ymd){
   const isTotal=/총|합계|전부|다해서|합쳐/.test(src);
   const unitPrice = n==null ? null : Math.round(isTotal ? n/qty : n);
   const item=t.replace(/(개당|하나에|한개에|낱개|총액|총|합계|전부|다해서|합쳐서|구입함|구입|구매|사옴|샀음|샀다|샀|삼|원|에서|에|@|,)/g,' ').replace(/\s+/g,' ').trim();
-  return {date:ymd(d), vendor, item, qty, unitPrice, total: unitPrice==null?null:unitPrice*qty};
+  return {date:ymd(d), vendor, item, qty, unitPrice, total: unitPrice==null?null:unitPrice*qty, memo: isOld?'기존재고':''};
 }
-const looksLikePurchase = line => !!findVendor(line) || /(샀|구입|구매|사옴)/.test(line);
+const looksLikePurchase = line => !!findVendor(line) || /(샀|구입|구매|사옴|기존)/.test(line);
 
 Object.assign(window,{findParts, effCost, effMargin, VENDOR_ALIASES:VA, ikey, findVendor, findPart, buildStock, suggest, parsePurchase, looksLikePurchase});
 })();

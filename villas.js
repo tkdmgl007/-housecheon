@@ -41,6 +41,7 @@ window.VENDORS = [
   {name:'장땡타일 (장원산업대리점)', addr:'대전 서구 변동 49-12'},
   {name:'라온조명', addr:'대전 중구 용두동 131-13 1층'},
   {name:'인터넷 (쿠팡)', addr:'', url:'https://www.coupang.com'},
+  {name:'기존재고', addr:'', note:'원래 갖고 있던 물건'},
   {name:'기타', addr:''}
 ];
 

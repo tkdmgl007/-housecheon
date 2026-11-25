@@ -104,6 +104,10 @@ main{max-width:680px;margin:0 auto;padding:6px 12px 90px}
 .fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 16px);z-index:15;
   width:min(640px,calc(100% - 24px));padding:15px;border:0;border-radius:12px;background:var(--teal);color:#fff;font:inherit;font-size:16px;font-weight:700;
   box-shadow:0 4px 14px rgba(15,107,94,.3)}
+.unitrow{display:flex;gap:6px;margin-top:4px}.unitrow input{margin-top:0!important}
+.pub{flex:none;padding:0 12px;border-radius:8px;border:1px solid var(--teal);background:#fff;color:var(--teal);font:inherit;font-weight:700}
+.pub.on{background:var(--teal);color:#fff}
+.tag.free{background:#eef1f4;color:#5b6573}
 .hint{font-size:12px;color:var(--teal);background:var(--paper);border-radius:8px;padding:8px 10px;margin:-4px 0 10px;line-height:1.6}
 .hint:empty{display:none}
 .pickrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
@@ -162,8 +166,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
     <h2 id="sTitle">수리 기록</h2>
     <div class="g2">
       <label>날짜<input type="date" id="fDate"></label>
-      <label>호수<input id="fUnit" inputmode="numeric" placeholder="예: 302"></label>
+      <label>호수<span class="unitrow"><input id="fUnit" placeholder="예: 302"><button type="button" class="pub" data-pub="fUnit">공용</button></span></label>
     </div>
+    <label id="fPlaceBox">위치 메모<input id="fPlace" placeholder="예: 1층 현관, 2층 201호 앞, 옥상"></label>
     <label>내용<input id="fItem" list="itemList" placeholder="예: 수전, 폽업, 보일러" autocomplete="off"></label>
     <div class="hint" id="fHint"></div>
     <datalist id="itemList"></datalist>
@@ -171,7 +176,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
       <label>구분<select id="fKind"><option>수리</option><option>교체</option><option>설치</option><option>이사정산</option><option>기타</option></select></label>
       <label>청구가(원)<input id="fCharge" inputmode="numeric" placeholder="0"></label>
       <label id="qtyBox">재고에서 쓴 개수<input id="fQty" inputmode="numeric" value="1"></label>
-      <label>청구대상<select id="fTarget"><option>건물주</option><option>세입자</option></select></label>
+      <label>돈 받을 곳<select id="fTarget"><option>건물주</option><option>사장님</option><option>세입자</option><option>무상</option></select></label>
       <label>마진 (자동)<input id="fMargin" disabled></label>
     </div>
     <label>메모<input id="fMemo" placeholder="특이사항"></label>
@@ -230,10 +235,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
   <div class="sheet-bg" id="taskBg"></div>
   <div class="sheet" role="dialog" aria-label="할 일">
     <h2 id="tTitle">할 일</h2>
+    <label>위치 메모<input id="tPlace" placeholder="예: 1층 현관 (공용일 때)"></label>
     <label>할 일<input id="tText" placeholder="예: 화장실 등 수리 필요"></label>
     <div class="g2">
       <label>빌라<select id="tVilla"></select></label>
-      <label>호수<input id="tUnit" inputmode="numeric" placeholder="예: 102"></label>
+      <label>호수<span class="unitrow"><input id="tUnit" placeholder="예: 102"><button type="button" class="pub" data-pub="tUnit">공용</button></span></label>
       <label>날짜<input type="date" id="tDate"></label>
       <label>시간<input type="time" id="tTime"></label>
     </div>
@@ -277,7 +283,7 @@ const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${Str
 const mapUrl=a=>'https://map.naver.com/p/search/'+encodeURIComponent(a);
 const norm=s=>s.replace(/\s|\(|\)/g,'').toLowerCase();
 const unitKey=u=>String(u||'').replace(/호$/,'').trim();
-const unitSort=(a,b)=>(parseInt(a)||9999)-(parseInt(b)||9999)||a.localeCompare(b);
+const unitSort=(a,b)=>(a==='공용'?-1:b==='공용'?1:0)||(parseInt(a)||9999)-(parseInt(b)||9999)||a.localeCompare(b);
 const unitDocId=(v,u)=>(v+'__'+u).replace(/\//g,'-');
 
 /* ===== 데이터 ===== */
@@ -346,7 +352,7 @@ function renderPart(vendor, partName){
         <div class="m num">${l.qty}개 × ${won(l.price)}<br><b>${won(l.price*l.qty)}</b> <span class="tag ${l.left?'paid':''}">남은 ${l.left}</span></div></div>`).join('')}</div></div>
     <div class="sec"><h3>쓴 곳 <span>${uses.length}건</span></h3>
       ${uses.length?`<div class="list">${uses.map(u=>`<div class="rec" data-goto="#/v/${encodeURIComponent(u.r.villa||'')}/${encodeURIComponent(unitKey(u.r.unit))}">
-        <div><div class="t">${esc(u.r.villa||'')} ${esc(unitKey(u.r.unit))}호</div><div class="d">${esc(u.r.date||'')} · ${esc(u.r.item||'')}</div></div>
+        <div><div class="t">${esc(u.r.villa||'')} ${esc(unitLabel(u.r.unit))}</div><div class="d">${esc(u.r.date||'')} · ${esc(u.r.item||'')}</div></div>
         <div class="m num">${u.qty}개<br>${u.from.map(f=>`${esc(f.lot.vendor)} ${won(f.lot.price)}`).join(', ')||'<span style="color:var(--red)">재고 없음</span>'}</div></div>`).join('')}</div>`
       :'<div class="empty">아직 쓴 곳이 없어요.</div>'}</div>
     ${dis.length?`<div class="sec"><h3>반품·폐기 <span>${dis.length}건</span></h3><div class="list">${dis.map(x=>`<div class="rec" data-buy="${x.p.id}">
@@ -433,7 +439,7 @@ function renderVilla(v){
       <div class="units">
         ${us.map(u=>{ const rs=recordsOf(v.name,u); const due=rs.some(r=>!r.paid&&r.charge);
           const nt=openTasks(v.name,u).length;
-          return `<button class="unit${due?' due':''}" data-unit="${esc(u)}"><b>${esc(u)}호</b><small>${rs.length?`기록 ${rs.length}건`:'기록 없음'}${nt?` · 할일 ${nt}`:''}</small></button>`; }).join('')}
+          return `<button class="unit${due?' due':''}" data-unit="${esc(u)}"><b>${esc(unitLabel(u))}</b><small>${rs.length?`기록 ${rs.length}건`:'기록 없음'}${nt?` · 할일 ${nt}`:''}</small></button>`; }).join('')}
         <button class="unit add" id="addUnit">+ 호수</button>
       </div>
       ${us.length?'':'<div class="empty">아직 호수가 없어요.<br>수리하러 가면 아래 "+ 수리 기록"으로 적으세요. 호수가 자동으로 생겨요.</div>'}
@@ -449,7 +455,7 @@ function renderUnit(v,u){
   const unpaid=recs.filter(r=>!r.paid&&r.charge).reduce((a,r)=>a+Number(r.charge),0);
   $('main').innerHTML=`
     <a class="back" href="#/v/${encodeURIComponent(v.name)}">‹ ${esc(v.name)}</a>
-    <div class="title"><h2>${esc(v.name)} ${esc(u)}호</h2><small>${esc(v.addr)}</small></div>
+    <div class="title"><h2>${esc(v.name)} ${esc(unitLabel(u))}</h2><small>${esc(v.addr)}</small></div>
     ${warnBox()}
     ${taskSec(v.name,u)}
     <div class="sum num"><div><small>총 청구</small><strong>${won(sum('charge'))}</strong></div>
@@ -462,10 +468,10 @@ function renderUnit(v,u){
 }
 function recRow(r){
   return `<div class="rec" data-rec="${r.id}">
-    <div><div class="t">${r.unit?`<span>${esc(unitKey(r.unit))}호</span>`:''}${esc(r.item||r.raw||'')}</div>
+    <div><div class="t">${r.unit?`<span>${esc(unitLabel(r.unit))}${r.place?' '+esc(r.place):''}</span>`:''}${esc(r.item||r.raw||'')}</div>
       <div class="d">${esc(r.date||'')} · ${esc(r.kind||'')}${r.part?` · 📦${esc(r.part)} ${r.partQty||1}개 (원가 ${won(effCost(stock,r))})`:''}${r.memo?' · '+esc(r.memo):''}</div></div>
     <div class="m num">청구 ${won(r.charge)}<br><b>${won(effMargin(stock,r))}</b>
-      ${r.charge?(r.paid?`<span class="tag paid">입금${r.paidDate?' '+mmdd(r.paidDate):''}${r.payer?' '+esc(r.payer):''}</span>`:'<span class="tag unpaid">미수</span>'):''}</div></div>`;
+      ${r.target==='무상'?'<span class="tag free">무상</span>':''}${r.target==='사장님'||r.target==='세입자'?`<span class="tag" style="background:var(--paper)">${esc(r.target)}</span>`:''}${r.charge?(r.paid?`<span class="tag paid">입금${r.paidDate?' '+mmdd(r.paidDate):''}${r.payer?' '+esc(r.payer):''}</span>`:'<span class="tag unpaid">미수</span>'):''}</div></div>`;
 }
 
 /* ===== 수리 기록 입력 ===== */
@@ -479,11 +485,13 @@ function openSheet(rec){
   $('fKind').value = rec?.kind && [...$('fKind').options].some(o=>o.value===rec.kind) ? rec.kind : '수리';
   $('fCharge').value = rec?.charge ?? ''; $('fQty').value = rec?.partQty || 1;
   $('fTarget').value = rec?.target || '건물주'; $('fMemo').value = rec?.memo || '';
+  $('fPlace').value = rec?.place || ''; syncUnitUI('fUnit');
   $('fPaid').checked = !!rec?.paid; $('sDel').style.display = rec ? '' : 'none';
   $('fItem').dataset.part = rec?.part || '';
   if(rec) $('fItem').dataset.choice = rec.part||''; else delete $('fItem').dataset.choice;
   $('fHint').textContent='';
   $('itemList').innerHTML=[...new Set(ledger.map(r=>r.item).filter(Boolean))].slice(0,300).map(i=>`<option value="${esc(i)}">`).join('');
+  $('fCharge').disabled = $('fTarget').value==='무상';
   fillPrice(); $('sheetWrap').classList.add('open');
   if(!rec) setTimeout(()=>($('fUnit').value?$('fItem'):$('fUnit')).focus(),250);
 }
@@ -516,10 +524,10 @@ function estCost(){
 function updMargin(){ const c=estCost(); $('fMargin').value=won((toNum($('fCharge').value)??0)-c)+(c?` (원가 ${won(c)})`:''); }
 function saveSheet(){
   const c=curVilla(), unit=unitKey($('fUnit').value), item=$('fItem').value.trim();
-  if(!unit){ toast('호수를 적어주세요'); $('fUnit').focus(); return; }
+  if(!unit){ toast('호수를 적거나 공용을 눌러주세요'); $('fUnit').focus(); return; }
   if(!item){ toast('내용을 적어주세요'); $('fItem').focus(); return; }
-  fillPrice(); const charge=toNum($('fCharge').value), part=$('fItem').dataset.part||'', cost=estCost();
-  const data={ villa: editing?.villa || c.villa, unit, item, date:$('fDate').value, kind:$('fKind').value, 
+  fillPrice(); const free=$('fTarget').value==='무상', charge=free?null:toNum($('fCharge').value), part=$('fItem').dataset.part||'', cost=estCost();
+  const data={ villa: editing?.villa || c.villa, unit, place: unit==='공용' ? $('fPlace').value.trim() : ($('fPlace').value.trim()||''), item, date:$('fDate').value, kind:$('fKind').value, 
     charge, margin:(charge??0)-cost, target:$('fTarget').value, memo:$('fMemo').value.trim(), paid:$('fPaid').checked, paidDate: $('fPaid').checked ? (editing?.paidDate || ymd(new Date())) : '', needsCheck:false,
     part, partQty: part ? (toNum($('fQty').value)||1) : 0 };
   if(!editing || editing.part || part) data.cost = part ? null : (editing ? (editing.cost??null) : null);
@@ -539,7 +547,7 @@ function delRecord(){
 const todayStr=()=>ymd(new Date());
 function taskRow(t, showVilla=true){
   const late = !t.done && t.date && t.date < todayStr();
-  const where = [showVilla&&t.villa?t.villa:'', t.unit?t.unit+'호':''].filter(Boolean).join(' ');
+  const where = [showVilla&&t.villa?t.villa:'', t.unit?unitLabel(t.unit):'', t.place||''].filter(Boolean).join(' ');
   return `<div class="task${t.done?' done':''}${late?' late':''}" data-task="${t.id}">
     <button class="ck" data-check="${t.id}" aria-label="완료"></button>
     <div class="tt">${esc(t.text||'(내용 없음)')}${where?`<small>${esc(where)}</small>`:''}</div>
@@ -570,6 +578,7 @@ function openTask(t, preset={}){
   $('tTitle').textContent=t?'할 일 수정':'할 일 추가';
   $('tVilla').innerHTML='<option value="">(빌라 없음)</option>'+VILLA_LIST.map(v=>`<option>${esc(v.name)}</option>`).join('');
   $('tText').value=t?.text||''; $('tVilla').value=t?.villa ?? preset.villa ?? ''; $('tUnit').value=t?.unit ?? preset.unit ?? '';
+  $('tPlace').value=t?.place||''; syncUnitUI('tUnit');
   $('tDate').value=t?.date||''; $('tTime').value=t?.time||'';
   $('tDone').textContent = t?.done ? '다시 할 일로' : '완료';
   $('tDone').style.display = $('tDel').style.display = t ? '' : 'none';
@@ -577,7 +586,7 @@ function openTask(t, preset={}){
   $('taskWrap').classList.add('open'); if(!t) setTimeout(()=>$('tText').focus(),250);
 }
 function closeTask(){ $('taskWrap').classList.remove('open'); tasking=null; }
-function taskData(){ return {text:$('tText').value.trim(), villa:$('tVilla').value, unit:unitKey($('tUnit').value), date:$('tDate').value, time:$('tTime').value}; }
+function taskData(){ return {text:$('tText').value.trim(), villa:$('tVilla').value, unit:unitKey($('tUnit').value), place:$('tPlace').value.trim(), date:$('tDate').value, time:$('tTime').value}; }
 function saveTask(){
   const d=taskData(); if(!d.text){ toast('할 일을 적어주세요'); $('tText').focus(); return; }
   (tasking ? db.collection('tasks').doc(tasking.id).update(d) : db.collection('tasks').add({...d, done:false, raw:'', createdAt:Date.now()}))
@@ -599,22 +608,22 @@ $('tToRec').onclick=()=>{
   db.collection('tasks').doc(tasking.id).update({...d, done:true, doneAt:Date.now()});
   closeTask();
   location.hash=`#/v/${encodeURIComponent(d.villa)}/${encodeURIComponent(d.unit)}`;
-  setTimeout(()=>{ openSheet(); $('fItem').value=d.text.replace(/\s*(수리\s*)?(필요|해야함|해야|예정|요청|점검)\s*$/,'').trim(); delete $('fItem').dataset.choice; fillPrice(); setTimeout(()=>$('fCharge').focus(),300); },60);
+  setTimeout(()=>{ openSheet(); $('fPlace').value=d.place||''; $('fItem').value=d.text.replace(/\s*(수리\s*)?(필요|해야함|해야|예정|요청|점검)\s*$/,'').trim(); delete $('fItem').dataset.choice; fillPrice(); setTimeout(()=>$('fCharge').focus(),300); },60);
 };
 
 /* ===== 거래 내역 (카뱅처럼 날짜별) ===== */
 let histMonth=ymd(new Date()).slice(0,7);
 function histItems(){
   const out=[];
-  purchases.filter(p=>p.qty>0).forEach(p=>out.push({date:p.date, t:p.createdAt, amt:-(p.total ?? (p.unitPrice||0)*p.qty),
+  purchases.filter(p=>p.qty>0 && p.vendor!=='기존재고' && p.memo!=='기존재고').forEach(p=>out.push({date:p.date, t:p.createdAt, amt:-(p.total ?? (p.unitPrice||0)*p.qty),
     name:`${p.vendor||''} ${p.item||''}`.trim(), sub:`${p.qty}개 × ${won(p.unitPrice)}`, tag:'구매', ref:['buy',p.id]}));
   ledger.filter(r=>!r.part && Number(r.cost)>0).forEach(r=>out.push({date:r.date, t:r.createdAt, amt:-Number(r.cost),
-    name:`${r.villa||''} ${r.unit?unitKey(r.unit)+'호':''} ${r.item||''}`.trim(), sub:'수리하면서 산 것', tag:'현장구매', ref:['rec',r.id]}));
+    name:`${r.villa||''} ${unitLabel(r.unit)} ${r.item||''}`.trim(), sub:'수리하면서 산 것', tag:'현장구매', ref:['rec',r.id]}));
   payments.forEach(p=>out.push({date:p.date, t:p.createdAt, amt:+(p.amount||0),
-    name:p.name||'입금', sub:(p.recIds||[]).map(id=>{const r=ledger.find(x=>x.id===id); return r?`${r.villa} ${unitKey(r.unit)}호`:'';}).filter(Boolean).join(', ') || (p.status==='확인필요'?'어느 건인지 확인필요':''),
+    name:p.name||'입금', sub:(p.recIds||[]).map(id=>{const r=ledger.find(x=>x.id===id); return r?`${r.villa} ${unitLabel(r.unit)}`:'';}).filter(Boolean).join(', ') || (p.status==='확인필요'?'어느 건인지 확인필요':''),
     tag:'입금', ref:['pay',p.id]}));
   ledger.filter(r=>r.paid && !r.paymentId && Number(r.charge)>0).forEach(r=>out.push({date:r.paidDate||r.date, t:r.createdAt, amt:+Number(r.charge),
-    name:`${r.villa||''} ${r.unit?unitKey(r.unit)+'호':''} ${r.item||''}`.trim(), sub:r.payer||'', tag:'입금(직접체크)', ref:['rec',r.id]}));
+    name:`${r.villa||''} ${unitLabel(r.unit)} ${r.item||''}`.trim(), sub:r.payer||'', tag:'입금(직접체크)', ref:['rec',r.id]}));
   return out;
 }
 function renderHist(){
@@ -639,19 +648,24 @@ function renderHist(){
 }
 
 /* ===== 입금 ===== */
-const unpaidOf=villas=>ledger.filter(r=>villas.includes(r.villa) && !r.paid && Number(r.charge)>0 && (r.target||'건물주')==='건물주');
+const bossName=()=>owners['__boss']?.owner||'';
+const unpaidOf=villas=>ledger.filter(r=>!r.paid && Number(r.charge)>0 && (villas.includes('__boss') ? r.target==='사장님' : (villas.includes(r.villa) && (r.target||'건물주')==='건물주')));
 function renderPay(){
   const due=ledger.filter(r=>!r.paid && Number(r.charge)>0);
   const total=due.reduce((a,r)=>a+Number(r.charge),0);
   const chk=payments.filter(p=>p.status==='확인필요');
   const recent=payments.filter(p=>p.status!=='확인필요').sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||0)-(a.createdAt||0)).slice(0,30);
-  const byV={}; due.forEach(r=>{ (byV[r.villa]=byV[r.villa]||[]).push(r); });
+  const byV={}; due.filter(r=>r.target!=='사장님').forEach(r=>{ (byV[r.villa]=byV[r.villa]||[]).push(r); });
+  const bossDue=due.filter(r=>r.target==='사장님');
   $('count').textContent=`미수 ${won(total)}원`;
   const payRow=p=>`<div class="rec" data-pay="${p.id}">
     <div><div class="t">${esc(p.name||'이름 없음')}</div><div class="d">${esc(p.date||'')}${p.villas?.length?' · '+p.villas.map(esc).join(', '):''}${p.recIds?.length?` · ${p.recIds.length}건 입금처리`:''}</div></div>
     <div class="m num"><b>${won(p.amount)}</b>${p.status==='확인필요'?'<br><span class="tag chk">확인필요</span>':'<br><span class="tag paid">완료</span>'}</div></div>`;
   $('main').innerHTML=`${warnBox()}
     ${chk.length?`<div class="dong"><h2>확인 필요</h2><span>${chk.length}건 · 눌러서 어느 기록 입금인지 골라주세요</span></div><div class="list">${chk.map(payRow).join('')}</div>`:''}
+    <div class="owner" style="margin:12px 4px 0">사장님 이름 <b>${esc(bossName()||'미등록')}</b><button class="btn" id="editBoss">${bossName()?'수정':'등록'}</button></div>
+    ${bossDue.length?`<div class="dong"><h2>사장님한테 받을 돈</h2><span>${bossDue.length}건 · ${won(bossDue.reduce((a,r)=>a+Number(r.charge),0))}원</span></div>
+      <div class="list">${bossDue.map(r=>`<div class="rec" data-rec="${r.id}"><div><div class="t">${esc(r.villa)} ${esc(unitLabel(r.unit))} ${esc(r.item||'')}</div><div class="d">${esc(r.date||'')}</div></div><div class="m num"><b style="color:var(--amberink)">${won(r.charge)}</b></div></div>`).join('')}</div>`:''}
     <div class="dong"><h2>미수</h2><span>${Object.keys(byV).length}곳 · ${won(total)}원</span></div>
     ${Object.keys(byV).length?`<div class="list">${Object.entries(byV).sort((a,b)=>a[0].localeCompare(b[0],'ko')).map(([v,rs])=>`<div class="item" data-go="${esc(v)}">
       <div class="nm"><b>${esc(v)}</b><small>건물주 ${esc(ownerOf(v)||'미등록')} · ${rs.length}건</small></div>
@@ -665,14 +679,17 @@ function openPay(p){
   $('pTitle').textContent=p?'입금 확인':'입금 기록';
   $('pDate').value=p?.date||ymd(new Date()); $('pAmount').value=p?.amount??''; $('pName').value=p?.name||'';
   $('ownerList').innerHTML=[...new Set(Object.values(owners).map(o=>o.owner).filter(Boolean))].map(o=>`<option value="${esc(o)}">`).join('');
-  $('pVilla').innerHTML='<option value="">건물주 이름으로 자동</option>'+VILLA_LIST.map(v=>`<option>${esc(v.name)}</option>`).join('');
-  $('pVilla').value = p?.villas?.length===1 ? p.villas[0] : '';
+  $('pVilla').innerHTML='<option value="">이름으로 자동</option><option value="__boss">사장님 미수</option>'+VILLA_LIST.map(v=>`<option>${esc(v.name)}</option>`).join('');
+  $('pVilla').value = p?.villas?.length===1 ? (p.villas[0]==='사장님'?'__boss':p.villas[0]) : '';
   $('pDel').style.display=p?'':'none';
   payPicks(p?.recIds||null); $('payWrap').classList.add('open');
   if(!p) setTimeout(()=>$('pName').focus(),250);
 }
 function payTargets(){
-  const v=$('pVilla').value; return v ? [v] : villasOfOwner($('pName').value.trim());
+  const v=$('pVilla').value, n=$('pName').value.trim();
+  if(v) return [v];
+  if(n && (n===bossName() || /사장/.test(n))) return ['__boss'];
+  return villasOfOwner(n);
 }
 function payPicks(preset){
   const vs=payTargets(), amt=toNum($('pAmount').value);
@@ -680,9 +697,9 @@ function payPicks(preset){
   if(paying?.recIds?.length) cands=[...ledger.filter(r=>paying.recIds.includes(r.id)), ...cands.filter(r=>!paying.recIds.includes(r.id))];
   const auto = preset || matchPayment(amt, cands).map(r=>r.id);
   if(!vs.length){ $('pHint').innerHTML = $('pName').value.trim() ? '등록된 건물주가 아니에요. 빌라를 직접 골라주세요.' : ''; $('pRecs').innerHTML=''; return; }
-  $('pHint').innerHTML = `${vs.map(esc).join(', ')} 미수 ${cands.length}건` + (auto.length?' · 금액 맞는 걸 자동으로 골랐어요':(amt?' · 금액이 딱 맞는 게 없어요, 직접 골라주세요':''));
+  $('pHint').innerHTML = `${vs.map(x=>x==='__boss'?'사장님':esc(x)).join(', ')} 미수 ${cands.length}건` + (auto.length?' · 금액 맞는 걸 자동으로 골랐어요':(amt?' · 금액이 딱 맞는 게 없어요, 직접 골라주세요':''));
   $('pRecs').innerHTML = cands.map(r=>`<label class="pick"><input type="checkbox" value="${r.id}" ${auto.includes(r.id)?'checked':''}>
-    <span>${esc(r.villa)} ${esc(unitKey(r.unit))}호 ${esc(r.item||'')}<br><small style="color:var(--soft)">${esc(r.date||'')}</small></span><b>${won(r.charge)}</b></label>`).join('') + '<div class="hint" id="pSum"></div>';
+    <span>${esc(r.villa)} ${esc(unitLabel(r.unit))} ${esc(r.item||'')}<br><small style="color:var(--soft)">${esc(r.date||'')}</small></span><b>${won(r.charge)}</b></label>`).join('') + '<div class="hint" id="pSum"></div>';
   paySum();
 }
 function paySum(){
@@ -694,7 +711,7 @@ function savePay(){
   const amount=toNum($('pAmount').value), name=$('pName').value.trim();
   if(!amount){ toast('입금액을 적어주세요'); $('pAmount').focus(); return; }
   const ids=[...$('pRecs').querySelectorAll('input:checked')].map(i=>i.value);
-  const data={date:$('pDate').value, name, amount, villas:payTargets(), recIds:ids, status: ids.length?'완료':'확인필요'};
+  const data={date:$('pDate').value, name, amount, villas:payTargets().map(x=>x==='__boss'?'사장님':x), recIds:ids, status: ids.length?'완료':'확인필요'};
   const b=db.batch();
   const ref = paying ? db.collection('payments').doc(paying.id) : db.collection('payments').doc();
   (paying?.recIds||[]).filter(id=>!ids.includes(id)).forEach(id=>b.update(db.collection(LEDGER).doc(id),{paid:false,paidDate:'',payer:'',paymentId:''}));
@@ -702,7 +719,7 @@ function savePay(){
   paying ? b.update(ref,data) : b.set(ref,{...data,raw:'',createdAt:Date.now()});
   b.commit().catch(e=>toast('저장 실패: '+e.code));
   // 처음 보는 이름 + 빌라 하나 골랐으면 건물주로 등록
-  if(name && $('pVilla').value && !ownerOf($('pVilla').value)) db.collection('villaInfo').doc($('pVilla').value).set({owner:name},{merge:true});
+  if(name && $('pVilla').value && $('pVilla').value!=='__boss' && !ownerOf($('pVilla').value)) db.collection('villaInfo').doc($('pVilla').value).set({owner:name},{merge:true});
   closePay(); toast(ids.length?`${ids.length}건 입금 처리했어요`:'확인 필요로 저장했어요');
 }
 function delPay(){
@@ -765,6 +782,17 @@ function delBuy(){
 $('buyBg').onclick=closeBuy; $('bCancel').onclick=closeBuy; $('bSave').onclick=saveBuy; $('bDel').onclick=delBuy;
 ['bQty','bPrice','bItem','bVendor'].forEach(id=>$(id).addEventListener('input',bHint));
 
+/* 공용 버튼 */
+function syncUnitUI(id){
+  const pub = unitKey($(id).value)==='공용';
+  document.querySelector(`[data-pub="${id}"]`).classList.toggle('on',pub);
+}
+document.addEventListener('click',e=>{ const b=e.target.closest('[data-pub]'); if(!b) return;
+  const inp=$(b.dataset.pub); inp.value = unitKey(inp.value)==='공용' ? '' : '공용'; syncUnitUI(b.dataset.pub);
+  if(inp.value==='공용') (b.dataset.pub==='fUnit'?$('fPlace'):$('tPlace')).focus(); });
+['fUnit','tUnit'].forEach(id=>$(id).addEventListener('input',()=>syncUnitUI(id)));
+$('fTarget').addEventListener('change',()=>{ const f=$('fTarget').value==='무상'; $('fCharge').disabled=f; if(f) $('fCharge').value=''; updMargin(); });
+
 /* ===== 이벤트 ===== */
 let tt;function toast(m){const e=$('toast');e.textContent=m;e.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>e.classList.remove('show'),1800)}
 document.querySelector('.tabs').addEventListener('click',e=>{
@@ -786,6 +814,8 @@ $('main').addEventListener('click',e=>{
   if(e.target.id==='mPrev'||e.target.id==='mNext'){ const [y,m]=histMonth.split('-').map(Number); const d=new Date(y, m-1+(e.target.id==='mNext'?1:-1), 1); histMonth=ymd(d).slice(0,7); renderHist(); return; }
   const rf=e.target.closest('[data-ref]'); if(rf){ const [k,id]=rf.dataset.ref.split(':');
     if(k==='buy') openBuy(purchases.find(x=>x.id===id)); else if(k==='pay') openPay(payments.find(x=>x.id===id)); else openSheet(ledger.find(x=>x.id===id)); return; }
+  if(e.target.id==='editBoss'){ const n=prompt('사장님 이름 (통장에 찍히는 이름으로)', bossName()); if(n===null) return;
+    db.collection('villaInfo').doc('__boss').set({owner:n.trim()},{merge:true}).catch(er=>toast('저장 실패: '+er.code)); return; }
   const py=e.target.closest('[data-pay]'); if(py){ openPay(payments.find(x=>x.id===py.dataset.pay)); return; }
   if(e.target.id==='editOwner'){
     const v=curVilla().villa, cur=ownerOf(v);
@@ -807,7 +837,7 @@ $('main').addEventListener('click',e=>{
     location.hash=`#/v/${encodeURIComponent(v)}/${encodeURIComponent(u)}`; return;
   }
   if(e.target.id==='delUnit'){
-    const c=curVilla(); if(!confirm(`${c.unit}호를 목록에서 지울까요?`)) return;
+    const c=curVilla(); if(!confirm(`${unitLabel(c.unit)}를 목록에서 지울까요?`)) return;
     db.collection(UNITS).doc(unitDocId(c.villa,c.unit)).delete().catch(()=>{});
     location.hash='#/v/'+encodeURIComponent(c.villa);
   }
