@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f6b5e">
+<link rel="manifest" href="/voice-manifest.json">
+<link rel="apple-touch-icon" href="/mic-192.png">
+<title>말하기</title>
+<style>
+:root{--teal:#0f6b5e;--deep:#0b5248;--ink:#12332e;--soft:#5b7a73;--paper:#eef6f3;--rule:#cfe3dd;--amber:#e0a43a;--red:#b42318}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%}
+body{font-family:Pretendard,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;background:var(--teal);color:#fff;
+  padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);-webkit-tap-highlight-color:transparent}
+.wrap{max-width:560px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding:16px 18px 28px}
+.top{display:flex;justify-content:space-between;align-items:center;font-size:14px;opacity:.9}
+.top a{color:#fff;text-decoration:none;font-weight:700;background:rgba(255,255,255,.14);padding:6px 12px;border-radius:14px}
+.stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:24px 0}
+.big{width:min(62vw,240px);aspect-ratio:1;border-radius:50%;border:0;background:#fff;color:var(--teal);
+  font-size:72px;display:grid;place-items:center;box-shadow:0 0 0 10px rgba(255,255,255,.12)}
+.big.on{background:var(--red);color:#fff;animation:ring 1.4s ease-out infinite}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(255,255,255,.45)}100%{box-shadow:0 0 0 34px rgba(255,255,255,0)}}
+@media (prefers-reduced-motion:reduce){.big.on{animation:none}}
+.big:focus-visible{outline:3px solid var(--amber);outline-offset:6px}
+.state{font-size:20px;font-weight:800;text-align:center}
+.sub{font-size:14px;opacity:.85;text-align:center;line-height:1.6}
+textarea{width:100%;min-height:96px;border:0;border-radius:14px;padding:14px;font:inherit;font-size:17px;line-height:1.6;color:var(--ink);background:#fff;resize:vertical}
+textarea::placeholder{color:#9bb3ad}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.row button{padding:14px;border-radius:12px;border:0;font:inherit;font-size:16px;font-weight:800}
+.go{background:var(--amber);color:#3a2600}
+.clr{background:rgba(255,255,255,.16);color:#fff}
+.aibar{margin-top:12px;font-size:13px;line-height:1.6;opacity:.95}
+.aibar:empty{display:none}
+.aibar b{color:#ffe1a6}
+.aibar button{margin-left:6px;padding:4px 10px;border-radius:12px;border:1px solid #fff;background:transparent;color:#fff;font:inherit;font-size:12px;font-weight:700}
+.qitem{display:flex;gap:8px;background:rgba(255,255,255,.12);border-radius:10px;padding:8px 10px;margin-top:6px}
+.qitem span{flex:1}.qitem button{border:0;margin:0;padding:0 4px;font-size:16px}
+#done:empty{display:none}
+.done{margin-top:14px;background:#fff;color:var(--ink);border-radius:14px;overflow:hidden}
+.done h3{font-size:14px;background:var(--deep);color:#fff;padding:10px 12px;display:flex;justify-content:space-between;align-items:center}
+.done h3 button{border:0;background:none;color:#fff;font:inherit;font-size:13px}
+.drow{display:flex;gap:8px;align-items:flex-start;padding:11px 12px;border-top:1px solid var(--rule);font-size:15px}
+.drow:first-of-type{border-top:0}
+.drow span{flex:1;line-height:1.5}
+.drow small{display:block;color:var(--red);font-size:12px}
+.drow button{flex:none;padding:4px 9px;border-radius:10px;border:1px solid var(--rule);background:#fff;color:var(--soft);font:inherit;font-size:12px}
+.drow.gone{opacity:.4;text-decoration:line-through}
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 22px);transform:translateX(-50%);background:#fff;color:var(--ink);
+  padding:10px 16px;border-radius:20px;font-size:14px;font-weight:700;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;z-index:9}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span id="net">하우스천</span><a href="/memo.html">장부 열기</a></div>
+  <div class="stage">
+    <button class="big" id="micBtn" aria-label="말하기">🎤</button>
+    <div class="state" id="state">누르고 말하세요</div>
+    <div class="sub" id="sub">수리, 산 물건, 입금, 할 일 섞어서 말해도 돼요</div>
+  </div>
+  <textarea id="memo" placeholder="말한 내용이 여기 적혀요.&#10;데이터 없을 땐 키보드 🎤로 말하고 아래 '적기'를 누르세요."></textarea>
+  <div class="row"><button class="clr" id="clrBtn">지우기</button><button class="go" id="saveBtn">적기</button></div>
+  <div class="aibar" id="aiBar"></div>
+  <div id="done"></div>
+</div>
+<div id="toast"></div>
+
+<script src="/villas.js"></script>
+<script src="/stock.js"></script>
+<script src="/pay.js"></script>
+<script src="/tasks.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+firebase.initializeApp({
+  apiKey:"AIzaSyBrMcbN2Iv3hjBW0uQx7_gSXAWcwTTSgGI",
+  authDomain:"villa-management-4af75.firebaseapp.com",
+  projectId:"villa-management-4af75",
+  storageBucket:"villa-management-4af75.firebasestorage.app",
+  messagingSenderId:"994416353525",
+  appId:"1:994416353525:web:3bd200acc5d68f6df065bc"
+});
+const db=firebase.firestore();
+db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+const LEDGER='ledger';
+const villas=VILLA_LIST.map(v=>v.name);
+let entries=[], purchases=[], owners={};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const won=n=>(n===null||n===undefined||n==='')?'-':Number(n).toLocaleString('ko-KR');
+const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function renderPreview(){}   // 장부 화면 전용, 여기선 안 씀
+db.collection(LEDGER).onSnapshot(s=>{ entries=s.docs.map(d=>({id:d.id,...d.data()})); },()=>{});
+db.collection('purchases').onSnapshot(s=>{ purchases=s.docs.map(d=>({id:d.id,...d.data()})); },()=>{});
+db.collection('villaInfo').onSnapshot(s=>{ owners={}; s.docs.forEach(d=>owners[d.id]=d.data()); },()=>{});
+
+/* ===================== AI 정리 ===================== */
+const QKEY='ai-queue';
+const getQ=()=>{ try{ return JSON.parse(localStorage.getItem(QKEY)||'[]'); }catch(e){ return []; } };
+const setQ=q=>{ try{ localStorage.setItem(QKEY, JSON.stringify(q)); }catch(e){} renderAiBar(); };
+const aiOn=()=>{ try{ return localStorage.getItem('ai-ready')==='1'; }catch(e){ return false; } };
+let aiBusy=false, aiChecked=false, lastDone=[];
+
+async function checkAI(){
+  if(!navigator.onLine) return;
+  try{
+    const r=await fetch('/api/parse',{cache:'no-store'});
+    if(r.ok){ const j=await r.json(); localStorage.setItem('ai-ready', j.ai?'1':'0'); aiChecked=true; }
+  }catch(e){}
+  renderAiBar(); renderPreview(); processQueue();
+}
+function renderAiBar(){
+  const q=getQ();
+  if(!aiOn()){ $('aiBar').innerHTML = aiChecked ? 'AI 정리가 아직 설정 안 됐어요 (지금은 정해진 말투로만 알아들어요)' : ''; return; }
+  $('aiBar').innerHTML = `🤖 <b>AI 정리 켜짐</b>`+
+    (aiBusy ? ' · 정리하는 중…' : '')+
+    (q.length ? ` · 🕓 대기 <b>${q.length}건</b>${navigator.onLine?'':' (연결되면 자동으로 정리)'}${navigator.onLine&&!aiBusy?'<button id="qNow">지금 올리기</button>':''}` : '')+
+    q.map(it=>`<div class="qitem"><span>${esc(it.text)}</span><button data-q="${it.id}" aria-label="지우기">✕</button></div>`).join('');
+}
+function aiContext(day){
+  const d=new Date(day+'T12:00:00');
+  const st=buildStock(purchases, entries);
+  const by={};
+  Object.entries(owners).forEach(([v,o])=>{ if(v==='__boss'||!o?.owner) return; (by[o.owner]=by[o.owner]||[]).push(v); });
+  return {
+    today:day, weekday:'일월화수목금토'[d.getDay()],
+    villas: VILLA_LIST.map(v=>({name:v.name, dong:v.dong, aliases:VILLA_ALIASES.filter(([a,n])=>n===v.name).map(x=>x[0])})),
+    stock: Object.values(st).map(e=>({name:e.name, left:e.left})),
+    vendors: VENDORS.map(v=>v.name.replace(/\s*\(.*\)/,'')),
+    owners: Object.entries(by).map(([owner,vs])=>({owner, villas:vs})),
+    boss: owners['__boss']?.owner || ''
+  };
+}
+async function callAI(it){
+  const headers={'content-type':'application/json'};
+  const pin=localStorage.getItem('ai-pin'); if(pin) headers['x-app-pin']=pin;
+  let r;
+  try{ r=await fetch('/api/parse',{method:'POST', headers, body:JSON.stringify({text:it.text, context:aiContext(it.day)})}); }
+  catch(e){ return null; }
+  if(r.status===401){
+    const p=prompt('AI 비밀번호(PIN)를 넣어주세요. 한 번만 넣으면 기억해요');
+    if(p){ localStorage.setItem('ai-pin', p.trim()); return callAI(it); }
+    return null;
+  }
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){
+    toast(j.error || 'AI 정리 실패');
+    if(r.status===501){ localStorage.setItem('ai-ready','0'); renderPreview(); }
+    return null;
+  }
+  return j;
+}
+async function processQueue(){
+  if(aiBusy || !navigator.onLine || !aiOn()) return;
+  const q=getQ(); if(!q.length) return;
+  aiBusy=true; renderAiBar();
+  let all=[];
+  try{
+    for(const it of q){
+      const r=await callAI(it); if(!r) break;
+      all=all.concat(saveAI(r.entries||[], it));
+      setQ(getQ().filter(x=>x.id!==it.id));
+    }
+  } finally { aiBusy=false; renderAiBar(); }
+  if(all.length){ lastDone=all; renderDone(); toast(`${all.length}건 정리해서 적었어요`); }
+}
+
+/* AI 결과 → 하우스천에 저장 (구매 먼저 → 입금 → 수리 → 할 일) */
+function saveAI(list, it){
+  const now=Date.now(), raw=it.text, done=[];
+  const venNames=VENDORS.map(v=>v.name.replace(/\s*\(.*\)/,''));
+  const fixVilla=v=>{ v=String(v||'').trim(); if(villas.includes(v)) return v; const a=VILLA_ALIASES.find(([x])=>x===v); return a?a[1]:''; };
+  const order={purchase:0, payment:1, repair:2, task:3};
+  list=list.slice().sort((a,b)=>(order[a.type]??9)-(order[b.type]??9));
+  const newPur=[];
+  list.forEach((e,i)=>{
+    const ts=now+i, date=e.date||it.day;
+    if(e.type==='purchase'){
+      const item=String(e.item||'').trim(); if(!item) return;
+      const qty=Math.max(1, parseInt(e.qty)||1), up=e.unitPrice==null?null:Math.round(e.unitPrice);
+      const vendor=venNames.includes(e.vendor)?e.vendor:(/쿠팡/.test(e.vendor||'')?'인터넷':'기타');
+      const doc={date, vendor, item, qty, unitPrice:up, total:up==null?null:up*qty, memo:e.memo||'', raw, createdAt:ts, by:'ai'};
+      const ref=db.collection('purchases').doc(); ref.set(doc).catch(er=>toast('저장 실패: '+er.message));
+      newPur.push({id:ref.id, ...doc});
+      done.push({col:'purchases', id:ref.id, label:`🛒 ${vendor} ${item} ${qty}개 × ${won(up)}`+(doc.memo?' (기존재고)':'')});
+    }
+    else if(e.type==='payment'){
+      const name=String(e.name||'').trim(), amount=e.amount==null?null:Math.round(e.amount);
+      if(!amount) return;
+      const boss=owners['__boss']?.owner;
+      const isBoss=(boss && name===boss) || /사장/.test(name);
+      const ev=fixVilla(e.villa);
+      const vs=isBoss?[]:(ev?[ev]:VILLA_LIST.filter(v=>owners[v.name]?.owner===name).map(v=>v.name));
+      const cands=entries.filter(r=>!r.paid && Number(r.charge)>0 && (isBoss ? r.target==='사장님' : (vs.includes(r.villa) && (r.target||'건물주')==='건물주')));
+      const recs=matchPayment(amount, cands), ids=recs.map(r=>r.id);
+      const b=db.batch(), ref=db.collection('payments').doc();
+      ids.forEach(id=>b.update(db.collection(LEDGER).doc(id),{paid:true, paidDate:date, payer:name, paymentId:ref.id}));
+      b.set(ref,{date, name:isBoss&&boss?boss:name, amount, villas:isBoss?['사장님']:vs, recIds:ids, status:ids.length?'완료':'확인필요', raw, createdAt:ts, by:'ai'});
+      b.commit().catch(er=>toast('저장 실패: '+er.message));
+      done.push({col:'payments', id:ref.id, recIds:ids,
+        label:`💰 ${name||'이름?'} ${won(amount)}원 → `+(ids.length?recs.map(r=>`${r.villa} ${unitLabel(r.unit)}`).join(', ')+' 입금처리':'어느 건인지 확인필요'),
+        warn: ids.length?'':(vs.length||isBoss?'금액 맞는 미수가 없어요':'등록 안 된 이름이에요')});
+    }
+    else if(e.type==='repair'){
+      const villa=fixVilla(e.villa), unit=String(e.unit||'').replace(/호$/,'').trim();
+      const target=['건물주','사장님','세입자','무상'].includes(e.target)?e.target:'건물주';
+      const charge=target==='무상'?null:(e.charge==null?null:Math.round(e.charge));
+      const names=[...Object.values(buildStock(purchases, entries)).map(x=>x.name), ...newPur.map(x=>x.item)];
+      const part=names.find(n=>ikey(n)===ikey(e.part||'')) || '';
+      const partQty=part?Math.max(1, parseInt(e.qty)||1):0;
+      let est=0;
+      if(part){
+        const st=buildStock([...purchases, ...newPur], entries), pe=st[ikey(part)]; let need=partQty;
+        if(pe) for(const l of pe.lots){ if(need<=0) break; const t=Math.min(l.left,need); est+=t*l.price; need-=t; }
+      }
+      const kind=['수리','교체','설치','이사정산','기타'].includes(e.kind)?e.kind:'수리';
+      const needsCheck=!!e.unsure || !villa || !unit || (target!=='무상' && charge==null);
+      const doc={date, villa, unit, place:e.place||'', item:String(e.item||'').trim(), kind, charge, cost:null,
+        margin:(charge??0)-est, target, paid:!!e.paid, paidDate:e.paid?date:'', needsCheck, part, partQty,
+        memo:e.unsure?(e.unsureReason||''):'', raw, createdAt:ts, by:'ai'};
+      const ref=db.collection(LEDGER).doc(); ref.set(doc).catch(er=>toast('저장 실패: '+er.message));
+      done.push({col:LEDGER, id:ref.id,
+        label:`🔧 ${villa||'빌라?'} ${unitLabel(unit)||'호수?'}${doc.place?' '+doc.place:''} ${doc.item} · 청구 ${won(charge)}`+
+          (target!=='건물주'?` · ${target}`:'')+(doc.paid?' · 입금완료':'')+(part?` · 📦${part} ${partQty}개`:''),
+        warn: needsCheck ? (e.unsureReason || (!villa?'빌라를 못 알아들었어요':!unit?'호수를 못 알아들었어요':'금액을 못 알아들었어요')) : ''});
+    }
+    else if(e.type==='task'){
+      const villa=fixVilla(e.villa), unit=String(e.unit||'').replace(/호$/,'').trim();
+      const doc={villa, unit, place:e.place||'', text:String(e.text||e.item||'').trim(), date:e.date||'', time:e.time||'', done:false, raw, createdAt:ts, by:'ai'};
+      if(!doc.text) return;
+      const ref=db.collection('tasks').doc(); ref.set(doc).catch(er=>toast('저장 실패: '+er.message));
+      done.push({col:'tasks', id:ref.id,
+        label:`📋 할 일 ${villa} ${unitLabel(unit)}${doc.place?' '+doc.place:''} ${doc.text}${(doc.date||doc.time)?' · '+whenLabel(doc.date,doc.time):''}`.replace(/\s+/g,' '),
+        warn: e.unsure?(e.unsureReason||''):''});
+    }
+  });
+  if(!done.length) done.push({col:'', id:'', label:'적을 만한 내용을 못 찾았어요: '+raw, warn:'다시 말해주세요'});
+  return done;
+}
+function renderDone(){
+  if(!lastDone.length){ $('done').innerHTML=''; return; }
+  $('done').innerHTML=`<div class="done"><h3>🤖 방금 정리해서 적은 것 <button id="doneClose">닫기</button></h3>`+
+    lastDone.map((d,i)=>`<div class="drow${d.gone?' gone':''}"><span>${esc(d.label)}${d.warn?`<small>⚠ ${esc(d.warn)}</small>`:''}</span>`+
+      (d.col&&!d.gone?`<button data-undo="${i}">취소</button>`:'')+`</div>`).join('')+`</div>`;
+}
+function undoOne(i){
+  const d=lastDone[i]; if(!d||!d.col||d.gone) return;
+  const b=db.batch();
+  (d.recIds||[]).forEach(id=>b.update(db.collection(LEDGER).doc(id),{paid:false, paidDate:'', payer:'', paymentId:''}));
+  b.delete(db.collection(d.col).doc(d.id));
+  b.commit().catch(er=>toast('취소 실패: '+er.message));
+  d.gone=true; renderDone(); toast('취소했어요');
+}
+
+
+/* ===================== 저장 ===================== */
+function saveMemo(silent){
+  const text=$('memo').value.trim();
+  if(!text){ if(!silent) toast('말하거나 적어주세요'); return; }
+  if(!aiOn()){ toast('AI 정리가 꺼져 있어요. 장부에서 적어주세요'); return; }
+  const q=getQ(); q.push({id:'q'+Date.now(), text, day:ymd(new Date()), ts:Date.now()}); setQ(q);
+  $('memo').value=''; localStorage.removeItem('voice-draft');
+  if(navigator.onLine){ setState('AI가 정리하는 중…','잠깐만요'); processQueue().then(()=>setState('또 말하려면 누르세요','')); }
+  else { setState('폰에 저장했어요','연결되면 AI가 정리해서 올려요'); toast('저장했어요 · 연결되면 올라가요'); }
+}
+
+/* ===================== 🎤 ===================== */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null, listening=false, autoTry=false;
+function setState(a,b){ $('state').textContent=a; $('sub').textContent=b??''; }
+function micUI(){ $('micBtn').classList.toggle('on',listening); $('micBtn').textContent=listening?'⏹':'🎤';
+  if(listening) setState('듣고 있어요…','다 말했으면 한 번 더 누르세요'); }
+function startMic(isAuto){
+  autoTry=!!isAuto;
+  if(!SR){ if(!isAuto) toast('여기선 음성 버튼이 안 돼요. 키보드 🎤를 써주세요'); setState('키보드 🎤로 말하세요','아래 칸을 누르면 키보드가 나와요'); return; }
+  if(!navigator.onLine){ setState('데이터가 없어요','아래 칸 누르고 키보드 🎤로 말한 다음 적기를 누르세요'); if(!isAuto) $('memo').focus(); return; }
+  let base=$('memo').value; if(base && !/\n$/.test(base)) base+='\n';
+  let finals='';
+  rec=new SR(); rec.lang='ko-KR'; rec.continuous=true; rec.interimResults=true;
+  rec.onresult=ev=>{ autoTry=false; let interim='';
+    for(let k=ev.resultIndex;k<ev.results.length;k++){ const r=ev.results[k]; if(r.isFinal) finals+=r[0].transcript+' '; else interim+=r[0].transcript; }
+    $('memo').value=base+finals+interim; };
+  rec.onerror=ev=>{
+    if(ev.error==='not-allowed'||ev.error==='service-not-allowed'){ listening=false; if(!autoTry) toast('마이크 권한을 허용해주세요'); }
+    else if(ev.error==='network'){ listening=false; toast('음성 인식에 인터넷이 필요해요. 키보드 🎤를 써주세요'); }
+  };
+  rec.onend=()=>{
+    if(listening){ base=$('memo').value; if(base && !/\s$/.test(base)) base+=' '; finals=''; try{ rec.start(); }catch(e){ listening=false; micUI(); } return; }
+    micUI();
+    if($('memo').value.trim()) saveMemo(true); else setState('누르고 말하세요','수리, 산 물건, 입금, 할 일 섞어서 말해도 돼요');
+  };
+  listening=true; micUI();
+  try{ rec.start(); }catch(e){ listening=false; micUI(); setState('누르고 말하세요',''); }
+}
+function stopMic(){ listening=false; try{ rec&&rec.stop(); }catch(e){} micUI(); }
+
+let tt; function toast(m){ const el=$('toast'); el.textContent=m; el.classList.add('show'); clearTimeout(tt); tt=setTimeout(()=>el.classList.remove('show'),2200); }
+function renderNet(){ $('net').textContent = navigator.onLine ? '하우스천 · 연결됨' : '하우스천 · 📴 오프라인'; }
+
+$('micBtn').onclick=()=> listening ? stopMic() : startMic(false);
+$('saveBtn').onclick=()=>{ if(listening) stopMic(); else saveMemo(false); };
+$('clrBtn').onclick=()=>{ if(listening) stopMic(); $('memo').value=''; localStorage.removeItem('voice-draft'); };
+$('memo').value=localStorage.getItem('voice-draft')||'';
+$('memo').addEventListener('input',()=>localStorage.setItem('voice-draft',$('memo').value));
+$('aiBar').addEventListener('click',e=>{
+  if(e.target.id==='qNow'){ processQueue(); return; }
+  const x=e.target.closest('[data-q]'); if(x && confirm('이 메모를 지울까요?')) setQ(getQ().filter(it=>it.id!==x.dataset.q));
+});
+$('done').addEventListener('click',e=>{
+  if(e.target.id==='doneClose'){ lastDone=[]; renderDone(); return; }
+  const u=e.target.closest('[data-undo]'); if(u) undoOne(+u.dataset.undo);
+});
+addEventListener('online',()=>{ renderNet(); renderAiBar(); checkAI(); });
+addEventListener('offline',()=>{ renderNet(); renderAiBar(); });
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ processQueue(); if(!listening && !$('memo').value.trim()) startMic(true); } });
+setInterval(processQueue,60000);
+renderNet(); renderAiBar(); checkAI();
+// 아이콘 누르자마자 듣기 시작 (폰이 막으면 버튼 한 번 누르면 돼요)
+setTimeout(()=>startMic(true),300);
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+</script>
+</body>
+</html>
